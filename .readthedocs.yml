@@ -1,0 +1,6 @@
+# Required
+version: 2
+
+python:
+  install:
+    - requirements: docs/rtd-pip-requirements
