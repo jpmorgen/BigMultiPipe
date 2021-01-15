@@ -1,3 +1,17 @@
+.. _install:
+
+Installing BigMultiPipe
+-----------------------
+
+The `bigmultipipe` module is available on `pip
+<https://pip.pypa.io/en/latest/>`_:: 
+
+  pip install bigmultipipe
+
+Source code development is conducted on `GitHub <https://github.com/>`_::
+
+  git clone git://github.com/jpmorgen/BigMultiPipe.git
+
 .. _use:
 
 Discussion of use
@@ -111,8 +125,6 @@ First the `for` loop case:
 >>> from tempfile import TemporaryDirectory, TemporaryFile
 >>> import numpy as np
 >>> 
->>> from bigmultipipe import BigMultiPipe, prune_pout
->>> 
 >>> # Write some large files
 >>> with TemporaryDirectory() as tmpdirname:
 >>>     in_names = []
@@ -157,6 +169,12 @@ Now lets parallelize with `bigmultipipe` a few different ways:
 
 (1) Put all code into methods in a subclass of :class:`~bigmultipipe.BigMultiPipe`
 
+>>> import os
+>>> from tempfile import TemporaryDirectory, TemporaryFile
+>>> import numpy as np
+>>> 
+>>> from bigmultipipe import BigMultiPipe, prune_pout
+>>> 
 >>> class DemoMultiPipe1(BigMultiPipe):
 >>> 
 >>>     def file_read(self, in_name, **kwargs):
@@ -228,9 +246,14 @@ Now lets parallelize with `bigmultipipe` a few different ways:
 
 (2) Let's use the ``pre_process_list`` and ``post_process_list``
     parameters.  This allows us to assemble a pipeline at object
-    instantiation time or pipeline run time:x
+    instantiation time or pipeline run time:
 
-
+>>> import os
+>>> from tempfile import TemporaryDirectory, TemporaryFile
+>>> import numpy as np
+>>> 
+>>> from bigmultipipe import BigMultiPipe, prune_pout
+>>> 
 >>> def reject(data, reject_value=None, **kwargs):
 >>>     """Example pre-processing function to reject data"""
 >>>     if reject_value is None:
@@ -312,12 +335,13 @@ Now lets parallelize with `bigmultipipe` a few different ways:
 
 .. note::
    
-   When working with the ``post_process_list`` routines, or ``meta`` in
-   general, the ``meta`` `dict` itself can be modified rather than just
-   creating a small dictionary for merging.  Here is `average`
-   written two different ways, both of which are equivalent because of
-   the way :meth:`~bigmultipipe.BigMultiPipe.data_post_process` merges
-   the ``meta`` return value using :meth:`dict.update`:
+   When working with the ``post_process_list`` routines, or ``meta``
+   in general, the ``meta`` `dict` itself can be modified rather than
+   just returning a small dictionary.  With that in mind, here is
+   `average` written two additional ways, both of which yield the same
+   results because of the way
+   :meth:`~bigmultipipe.BigMultiPipe.post_process` merges the ``meta``
+   return value using :meth:`dict.update`:
 
    >>> def average(data, meta, **kwargs):
    >>>     av = np.average(data)
@@ -331,15 +355,19 @@ Now lets parallelize with `bigmultipipe` a few different ways:
 
 .. note::
    
-   The trick for modifying the ``meta`` `dict` on-the-fly in the
-   previous note does not work for ``**kwargs``.  Because of the magic
-   of how Python implements ``**kwargs``, ``kwargs`` in the called
-   routine effectively becomes a `dict` of keywords that is passed by
-   value.  Nevertheless, it is possible to querey and extract existing
-   keywords from ``kwargs`` and return them to
-   :meth:`~bigmultipipe.BigMultiPipe.pre_process` for merging into the
-   ``kwargs`` that are passed to subsequent routines.  This provides
-   one mechanism for implementing the "control" channel of
+   For ``kwargs`` processed in ``pre_process_list`` routines, the
+   ``kwargs`` `dict`, or at leaest the part of it you wish to modify,
+   must be passed back explicitly, as shown in the ``boost_later``
+   example.  This is because of the magic of how Python implements
+   ``**kwargs.`` Unlike ``meta`` in the previous note, when
+   ``**kwargs`` are passed into the called routine, a local variable
+   ``kwargs`` is created.  This is a `dict` of the form ``{'keyword1':
+   value1, 'keyword1': value2}``.  Thus, modifying ``kwargs`` does not
+   affect the original ``**kwargs``.  Nevertheless, it is possible to
+   querey and extract existing keywords from ``kwargs`` and return
+   them to :meth:`~bigmultipipe.BigMultiPipe.pre_process` for merging
+   into the ``kwargs`` that are passed to subsequent routines.  This
+   provides one mechanism for implementing the "control" channel of
    `bigmultipipe`, as discussed in `Discussion of Design`_.  Another
    method is to define property in the subclassed
    :class:`~bigmultipipe.BigMultiPipe`.  The advantage of using the

@@ -10,7 +10,6 @@ BigMultiPipe
 
    .. autosummary::
 
-      ~BigMultiPipe.data_post_process
       ~BigMultiPipe.data_process
       ~BigMultiPipe.data_process_meta_create
       ~BigMultiPipe.file_process
@@ -18,11 +17,11 @@ BigMultiPipe
       ~BigMultiPipe.file_write
       ~BigMultiPipe.outname_create
       ~BigMultiPipe.pipeline
+      ~BigMultiPipe.post_process
       ~BigMultiPipe.pre_process
 
    .. rubric:: Methods Documentation
 
-   .. automethod:: data_post_process
    .. automethod:: data_process
    .. automethod:: data_process_meta_create
    .. automethod:: file_process
@@ -30,4 +29,5 @@ BigMultiPipe
    .. automethod:: file_write
    .. automethod:: outname_create
    .. automethod:: pipeline
+   .. automethod:: post_process
    .. automethod:: pre_process

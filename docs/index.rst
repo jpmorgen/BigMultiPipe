@@ -25,6 +25,8 @@ processing of large data structures
 
    bigmultipipe
 
+API Reference
+=============
 .. toctree::
     :maxdepth: 1
 
@@ -43,8 +45,8 @@ Acknowledgments
 
 This module was developed with support from NSF grant AST-1616928 to
 the `Planetary Science Institute`_ and inspired by the excellent tools
-in the `astropy <https://www.astropy.org/>` and `astropy affiliated packages
-<https://www.astropy.org/affiliated/>`, particularly `ccdproc`_
+in the `astropy`_ and `astropy affiliated packages
+<https://www.astropy.org/affiliated/>`_, particularly `ccdproc`_
 
 
 

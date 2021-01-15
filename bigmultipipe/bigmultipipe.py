@@ -11,9 +11,10 @@ import multiprocessing.pool
 # Adapted from various source on the web
 # https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic
 class NoDaemonProcess(multiprocessing.Process):
-    """Make 'daemon' attribute always return False, thus enabling
-    child processes to run their own processes"""
+    """Make ``daemon`` attribute always return False, thus enabling
+    child processes to run their own sub-processes"""
     def _get_daemon(self):
+        """Always returns `False`"""
         return False
     def _set_daemon(self, value):
         pass
@@ -22,7 +23,7 @@ class NoDaemonProcess(multiprocessing.Process):
 # We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
 # because the latter is only a wrapper function, not a proper class.
 class NoDaemonPool(multiprocessing.pool.Pool):
-    """Allows child processes to run their own multiple processes"""
+    """Works with :class:`NoDaemonProcess` to allows child processes to run their own sub-processes"""
     Process = NoDaemonProcess
 
 class WorkerWithKwargs():
@@ -32,7 +33,15 @@ class WorkerWithKwargs():
     Parameters
     ----------
     function : function
-        Function called by :meth:`WorkerWithKwargs.worker()` method 
+        Function called by :meth:`~WorkerWithKwargs.worker()` 
+
+    kwargs : kwargs
+        kwargs to be passed to function
+
+    Attributes
+    ----------
+    function : function
+        Function called by :meth:`~WorkerWithKwargs.worker()` 
 
     kwargs : kwargs
         kwargs to be passed to function
@@ -63,15 +72,15 @@ class WorkerWithKwargs():
         self.function = function
         self.kwargs = kwargs
     def worker(self, *args):
-        """Method called to execute function with saved kwargs
+        """Method called to execute function with saved ``**kwargs``
 
         Parameters
         ----------
-        ``*args`` : any type
+        \*args : any type
 
         Returns
         -------
-        function(``*args``, ``**kwargs``)
+        function(\*args, \*\*kwargs)
 
         """
 
@@ -103,7 +112,7 @@ def num_can_process(num_to_process=None,
 
     mem_available : int or None. optional
         Amount of memory available in bytes for the total set of 
-        processes.  If None, mem_frac parameter is used.
+        processes.  If None, ``mem_frac`` parameter is used.
         Default is ``None``
 
     mem_frac : float, optional
@@ -119,9 +128,9 @@ def num_can_process(num_to_process=None,
         Default is ``None``
 
     error_if_zero : bool, optional
-        If True, throw an error if return value would be zero.  Useful
-        for catching case when there is not enough memory for even
-        one process.
+        If True, throw an :class:`EnvironmentError` error if return
+        value would be zero.  Useful for catching case when there is
+        not enough memory for even one process.
         Default is ``True``
 
     """
@@ -168,8 +177,8 @@ class BigMultiPipe():
 
     outname_append : str, optional
         String to append to outname to avoid risk of input file
-        overwrite.  Example input file "test.dat" would become output
-        file "test_bmp.dat"
+        overwrite.  Example input file ``test.dat`` would become
+        output file ``test_bmp.dat``
         Default is ``_bmp``
 
     pre_process_list : list
@@ -207,7 +216,7 @@ class BigMultiPipe():
 
     post_process_list : list
 
-        List of functions called by :func:`data_post_process` after
+        List of functions called by :func:`post_process` after
         primary processing step.  Indended to enable additional
         processing steps and produce metadata as discussed in
         :ref:`Discussion of Design <design>`.  Each function must
@@ -218,7 +227,7 @@ class BigMultiPipe():
         must be of type `dict.` Because ``meta`` is of type `dict`, it
         can be modified directly in the function.  In this case, the
         user can return either {} or ``meta`` as ``additional_meta``,
-        since the calling routine, :meth:`data_post_process`. uses
+        since the calling routine, :meth:`post_process`. uses
         :meth:`dict.update` to merge ``additional_metadata`` into
         ``meta``.  Below are examples.  See :ref:`Example` for an
         example of how to use them in a functioning pipeline.
@@ -313,7 +322,7 @@ class BigMultiPipe():
             List of input filenames.  Each file is processed using
             :func:`file_process`
 
-        All other parameters : see documentation for :class:`BigMultiPipe`
+        All other parameters : see Parameters to :class:`BigMultiPipe`
 
         Returns
         -------
@@ -355,7 +364,7 @@ class BigMultiPipe():
         return retvals
         
     def file_process(self, in_name, **kwargs):
-        """Process one file in the bigmultipipe system
+        """Process one file in the `bigmultipipe` system
 
         This method can be overridden to interface with applications
         where the primary processing routine already reads the input
@@ -370,7 +379,7 @@ class BigMultiPipe():
             created by :func:`outname_create` and data will be written by
             :func:`file_write`
 
-        kwargs : see NOTE in :class:`BigMultiPipe` Parameter section
+        kwargs : see Notes in :class:`BigMultiPipe` Parameter section
 
         Returns
         -------
@@ -403,7 +412,7 @@ class BigMultiPipe():
         in_name : str
             Name of file to read
 
-        kwargs : see NOTE in :class:`BigMultiPipe` Parameter section
+        kwargs : see Notes in :class:`BigMultiPipe` Parameter section
 
         Returns
         -------
@@ -430,7 +439,7 @@ class BigMultiPipe():
         outname : str
             Name of file to write
 
-        kwargs : see NOTE in :class:`BigMultiPipe` Parameter section
+        kwargs : see Notes in :class:`BigMultiPipe` Parameter section
 
         Returns
         -------
@@ -451,16 +460,16 @@ class BigMultiPipe():
         Parameters
         ----------
         data : any type
-            Data to be processed by :func:`data_pre_process`,
-            :func:`data_process`, and :func:`data_post_process`
+            Data to be processed by :func:`pre_process`,
+            :func:`data_process`, and :func:`post_process`
 
-        kwargs : see NOTE in :class:`BigMultiPipe` Parameter section
+        kwargs : see Notes in :class:`BigMultiPipe` Parameter section
 
         Returns
         -------
         (data, meta) : tuple
             Data is the processed data.  Meta is created by
-            :func:`data_post_process`
+            :func:`post_process`
 
         """
         # Allow overriding of self.kwargs by **kwargs
@@ -471,7 +480,7 @@ class BigMultiPipe():
         if data is None:
             return(None, {})
         data = self.data_process(data, **kwargs)
-        data, meta = self.data_post_process(data, **kwargs)
+        data, meta = self.post_process(data, **kwargs)
         return (data, meta)
 
     def pre_process(self, data,
@@ -491,9 +500,10 @@ class BigMultiPipe():
             Data to be processed by the functions in pre_process_list
 
         pre_process_list : list
-            See documentation for BigMultiPipe
+            See documentation for this parameter in Parameters section
+            of :class:`BigMultiPipe`
 
-        kwargs : see NOTE in :class:`BigMultiPipe` Parameter section
+        kwargs : see Notes in :class:`BigMultiPipe` Parameter section
 
         Returns
         -------
@@ -536,7 +546,7 @@ class BigMultiPipe():
         # Insert call to processing code here
         return data
 
-    def data_post_process(self, data,
+    def post_process(self, data,
                      post_process_list=None,
                      **kwargs):
         """Conduct post-processing tasks, including creation of metadata
@@ -553,9 +563,10 @@ class BigMultiPipe():
             Data to be processed by the functions in pre_process_list
 
         post_process_list : list
-            See documentation for BigMultiPipe
+            See documentation for this parameter in Parameters section
+            of :class:`BigMultiPipe`
 
-        kwargs : see NOTE in :class:`BigMultiPipe` Parameter section
+        kwargs : see Notes in :class:`BigMultiPipe` Parameter section
 
         Returns
         -------
@@ -593,7 +604,12 @@ class BigMultiPipe():
         data : any type
             Processed data
 
-        All other parameters : see documentation for :class:`BigMultiPipe`
+        All other parameters : see Parameters to :class:`BigMultiPipe`
+
+        Returns
+        -------
+        outname : str
+            Name of output file to be written
 
         """
         # Allow overriding of self.kwargs by **kwargs
@@ -635,13 +651,13 @@ def prune_pout(pout, in_names):
     in_names : list of str
         Input file names to a :meth:`BigMultiPipe.pipeline()
         <bigmultipipe.BigMultiPipe.pipeline>` run.  There will
-        be one pout for each in_name
+        be one ``pout`` for each ``in_name``
 
     Returns
     -------
     (pruned_pout, pruned_in_names) : list of tuples (str, dict)
         Pruned output with the ``None`` output filenames removed in both
-        the pout and in_name lists.
+        the ``pout`` and ``in_name`` lists.
 
     """
     pruned_pout = []
@@ -656,13 +672,12 @@ def prune_pout(pout, in_names):
 
 
 def multi_logging(level, meta, message):
-    """Implements logging on a per-process basis in BigMultiPipe
-    post-processing routines
+    """Implements logging on a per-process basis in :class:`~bigmultipipe.BigMultiPipe` pipeline post-processing routines
 
     Parameters
     ----------
     level : str
-        Log message level (e.g., 'debug, info, warn, error')
+        Log message level (e.g., "debug", "info", "warn, "error")
 
     meta : dict
         The meta channel of a :class:`~bigmultipipe.BigMultiPipe` pipeline

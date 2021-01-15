@@ -31,7 +31,7 @@ author = 'Jeffrey P. Morgenthaler'
 # The short X.Y version
 version = ''
 # The full version, including alpha/beta/rc tags
-release = 'alpha1.0'
+release = 'initial'
 
 
 # -- General configuration ---------------------------------------------------
