@@ -1,12 +1,12 @@
 """Provides tools for parallel pipeline processing of large data structures"""
 
 import os
-import psutil
-
 import multiprocessing
 # For NoDaemonPool we must import this explicitly, it is not
 # imported by the top-level multiprocessing module.
 import multiprocessing.pool
+
+import psutil
 
 # Adapted from various source on the web
 # https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic
