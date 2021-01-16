@@ -418,6 +418,7 @@ class BigMultiPipe():
         -------
         data : any type
             Data to be processed
+
         """
         
         # Allow overriding of self.kwargs by **kwargs
@@ -434,7 +435,7 @@ class BigMultiPipe():
         Parameters
         ----------
         data : any type
-            Data to be processed
+            Processed data
 
         outname : str
             Name of file to write
@@ -445,6 +446,7 @@ class BigMultiPipe():
         -------
         outname : str
             Name of file written
+
         """
         # Allow overriding of self.kwargs by **kwargs
         skwargs = self.kwargs.copy()
