@@ -112,7 +112,7 @@ def num_can_process(num_to_process=None,
 
     mem_available : int or None. optional
         Amount of memory available in bytes for the total set of 
-        processes.  If None, ``mem_frac`` parameter is used.
+        processes.  If ``None``, ``mem_frac`` parameter is used.
         Default is ``None``
 
     mem_frac : float, optional
