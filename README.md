@@ -21,8 +21,6 @@ If you use bigmultipipe in work that leads to a publication, please
 cite it in your references using this Zenodo link:
 https://zenodo.org/badge/latestdoi/329778044
 
-https://zenodo.org/badge/latestdoi/4446853
-
 Thanks!
 
 Acknowledgments
