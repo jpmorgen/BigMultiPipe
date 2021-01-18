@@ -40,6 +40,18 @@ Indices and tables
 * :ref:`modindex`
 * :ref:`search`
 
+Acknowledging bigmultipipe in your work
+=======================================
+
+If you use bigmultipipe in work that leads to a publication, please
+cite it in your references using this Zenodo link.
+
+Thanks!
+
+.. image:: https://zenodo.org/badge/329778044.svg
+   :target: https://zenodo.org/badge/latestdoi/329778044
+
+
 Acknowledgments
 ===============
 
@@ -47,8 +59,6 @@ This module was developed with support from NSF grant AST-1616928 to
 the `Planetary Science Institute`_ and inspired by the excellent tools
 in the `astropy`_ and `astropy affiliated packages
 <https://www.astropy.org/affiliated/>`_, particularly `ccdproc`_
-
-
 
 .. _Planetary Science Institute: https://psi.edu/
 .. _ccdproc: https://ccdproc.readthedocs.io/en/latest/
