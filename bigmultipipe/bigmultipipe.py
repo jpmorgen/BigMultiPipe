@@ -579,10 +579,15 @@ class BigMultiPipe():
         if post_process_list is None:
             post_process_list = []
         for pp in post_process_list:
-            data, this_meta = pp(data, meta, **kwargs)
-            if data is None:
+            retval = pp(data, bmp_meta=meta, **kwargs)
+            if retval is None:
                 return (None, {})
-            meta.update(this_meta)
+            if isinstance(retval, dict) and 'bmp_data' in retval:
+                data = retval['bmp_data']
+                this_meta = retval.get('bmp_meta')
+                if this_meta is None:
+                    this_meta = {}
+                meta.update(this_meta)
         return (data, meta)
 
     def outname_create(self, in_name, data, meta,

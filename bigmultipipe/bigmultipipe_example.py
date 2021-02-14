@@ -122,17 +122,26 @@ def boost_later(data, boost_target=None, boost_amount=None, **kwargs):
         return (data, {'need_to_boost_by': boost_amount})
     return (data, {})
 
-def later_booster(data, meta, need_to_boost_by=None, **kwargs):
+def later_booster(data, need_to_boost_by=None, **kwargs):
     """Example post-processing function.  Interprets keyword set by boost_later"""
     if need_to_boost_by is None:
         return (data, {})
     data = data + need_to_boost_by
-    return (data, {})
+    return data
 
-def average(data, meta, **kwargs):
+def average(data, **kwargs):
     """Example metadata generator"""
     av = np.average(data)
-    return (data, {'average': av})
+    retval = {'bmp_data': data,
+              'bmp_meta': {'average': av}}
+    return retval
+
+def median(data, bmp_meta=None, **kwargs):
+    """Example metadata generator"""
+    median = np.median(data)
+    if bmp_meta is not None:
+        bmp_meta['median'] = median
+    return data
 
 class DemoMultiPipe2(BigMultiPipe):
 
