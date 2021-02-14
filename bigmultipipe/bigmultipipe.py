@@ -307,6 +307,20 @@ class BigMultiPipe():
         self.outname_append = outname_append
         self.kwargs = kwargs
 
+    def kwargs_merge(self, **kwargs):
+        """Merge \*\*kwargs with \*\*kwargs provided on instantiation
+
+        Intended to be called by methods
+
+        Parameters
+        ----------
+        \*\*kwargs : keyword arguments
+        """
+
+        nkwargs = self.kwargs.copy()
+        nkwargs.update(kwargs)
+        return nkwargs
+        
     def pipeline(self, in_names,
                  num_processes=None,
                  mem_available=None,
@@ -346,10 +360,7 @@ class BigMultiPipe():
             process_size = self.process_size
         if PoolClass is None:
             PoolClass = self.PoolClass
-        # Allow overriding of self.kwargs by **kwargs
-        skwargs = self.kwargs.copy()
-        skwargs.update(kwargs)
-        kwargs = skwargs
+        kwargs = self.kwargs_merge(**kwargs)
         ncp = num_can_process(len(in_names),
                               num_processes=num_processes,
                               mem_available=mem_available,
@@ -386,13 +397,10 @@ class BigMultiPipe():
         (outname, meta) : tuple
             Outname is the name of file to which processed data was
             written.  Meta is the dictionary element of the tuple
-            returned by func::`data_process_meta_create`
+            returned by :func:`data_process_meta_create`
 
         """
-        # Allow overriding of self.kwargs by **kwargs
-        skwargs = self.kwargs.copy()
-        skwargs.update(kwargs)
-        kwargs = skwargs
+        kwargs = self.kwargs_merge(**kwargs)
         data = self.file_read(in_name, **kwargs)
         if data is None:
             return (None, {})
@@ -421,10 +429,7 @@ class BigMultiPipe():
 
         """
         
-        # Allow overriding of self.kwargs by **kwargs
-        skwargs = self.kwargs.copy()
-        skwargs.update(kwargs)
-        kwargs = skwargs
+        kwargs = self.kwargs_merge(**kwargs)
         with open(in_name, 'rb') as f:
             data = f.read()
         return data
@@ -448,10 +453,7 @@ class BigMultiPipe():
             Name of file written
 
         """
-        # Allow overriding of self.kwargs by **kwargs
-        skwargs = self.kwargs.copy()
-        skwargs.update(kwargs)
-        kwargs = skwargs
+        kwargs = self.kwargs_merge(**kwargs)
         with open(outname, 'wb') as f:
             f.write(data)
         return outname
@@ -474,15 +476,14 @@ class BigMultiPipe():
             :func:`post_process`
 
         """
-        # Allow overriding of self.kwargs by **kwargs
-        skwargs = self.kwargs.copy()
-        skwargs.update(kwargs)
-        kwargs = skwargs
+        kwargs = self.kwargs_merge(**kwargs)
         (data, kwargs) = self.pre_process(data, **kwargs)
         if data is None:
             return(None, {})
         data = self.data_process(data, **kwargs)
         data, meta = self.post_process(data, **kwargs)
+        if data is None:
+            return(None, {})
         return (data, meta)
 
     def pre_process(self, data,
@@ -514,10 +515,7 @@ class BigMultiPipe():
             kwarg outputs from all of the pre_process_list functions.
 
         """
-        # Allow overriding of self.kwargs by **kwargs
-        skwargs = self.kwargs.copy()
-        skwargs.update(kwargs)
-        kwargs = skwargs
+        kwargs = self.kwargs_merge(**kwargs)
         if pre_process_list is None:
             pre_process_list = []
         pre_process_list = self.pre_process_list + pre_process_list
@@ -541,10 +539,7 @@ class BigMultiPipe():
         data : any type
             Processed data
         """
-        # Allow overriding of self.kwargs by **kwargs
-        skwargs = self.kwargs.copy()
-        skwargs.update(kwargs)
-        kwargs = skwargs
+        kwargs = self.kwargs_merge(**kwargs)
         # Insert call to processing code here
         return data
 
@@ -577,10 +572,7 @@ class BigMultiPipe():
             meta dicts from all of the post_process_list functions.
 
         """
-        # Allow overriding of self.kwargs by **kwargs
-        skwargs = self.kwargs.copy()
-        skwargs.update(kwargs)
-        kwargs = skwargs
+        kwargs = self.kwargs_merge(**kwargs)
         if post_process_list is None:
             post_process_list = self.post_process_list
         meta = {}
@@ -588,6 +580,8 @@ class BigMultiPipe():
             post_process_list = []
         for pp in post_process_list:
             data, this_meta = pp(data, meta, **kwargs)
+            if data is None:
+                return (None, {})
             meta.update(this_meta)
         return (data, meta)
 
@@ -614,10 +608,7 @@ class BigMultiPipe():
             Name of output file to be written
 
         """
-        # Allow overriding of self.kwargs by **kwargs
-        skwargs = self.kwargs.copy()
-        skwargs.update(kwargs)
-        kwargs = skwargs
+        kwargs = self.kwargs_merge(**kwargs)
         if outdir is None:
             outdir = self.outdir
         if create_outdir is None:
