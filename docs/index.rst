@@ -56,9 +56,10 @@ Acknowledgments
 ===============
 
 This module was developed with support from NSF grant AST-1616928 to
-the `Planetary Science Institute`_ and inspired by the excellent tools
+the `Planetary Science Institute`_, inspired by the excellent tools
 in the `astropy`_ and `astropy affiliated packages
-<https://www.astropy.org/affiliated/>`_, particularly `ccdproc`_
+<https://www.astropy.org/affiliated/>`_, particularly `ccdproc`_, and
+by D. Morgenthaler who provided packaging and documentation guidance.
 
 .. _Planetary Science Institute: https://psi.edu/
 .. _ccdproc: https://ccdproc.readthedocs.io/en/latest/

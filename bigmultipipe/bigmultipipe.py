@@ -182,66 +182,70 @@ class BigMultiPipe():
         Default is ``_bmp``
 
     pre_process_list : list
-
         List of functions called by :func:`pre_process` before primary
         processing step.  Intended to implement filtering and control
         features as described in :ref:`Discussion of Design <design>`.
         Each function must accept one positional parameter, ``data``,
         keyword arguments necessary for its internal functioning, and
         ``**kwargs`` to ignore keyword parameters not processed by the
-        function.  The return value of each function must be a
-        `tuple`, of the form ``(data, additional_keywords)`` where
-        ``additional_keywords`` is of type `dict`.  If ``data`` is
-        returned as ``None``, processing of that file stops, no output
-        file is written, and ``None`` is returned instead of an output
-        filename.  Below are examples.  See :ref:`Example` to see this
-        code in use in a functioning pipeline.
+        function.  If the return value of the function is ``None``,
+        processing of that file stops, no output file is written, and
+        ``None`` is returned instead of an output filename.  This is
+        how filtering is implemented.  Otherwise, the return value is
+        either ``data`` or a `dict` with two keys: ``bmp_data`` and
+        ``bmp_kwargs``.  In the later case, ``bmp_kwargs`` will be
+        merged into ``**kwargs``.  This is how the control channel is
+        implemented.  Below are examples.  See :ref:`Example` to see
+        this code in use in a functioning pipeline.
 
-        >>> def reject(data, reject_value=None, **kwargs):
-        >>>     if reject_value is None:
-        >>>         return (data, {})
-        >>>     if data[0,0] == reject_value:
-        >>>         # --> Return data=None to reject data
-        >>>         return (None, {})
-        >>>     return (data, {})
-        >>> 
-        >>> def boost_later(data, boost_target=None, boost_amount=None, **kwargs):
-        >>>     if boost_target is None or boost_amount is None:
-        >>>         return (data, {})
-        >>>     if data[0,0] == boost_target:
-        >>>         # --> This is equivalent to setting a keyword parameter
-        >>>         # need_to_boost_by=boost_amount
-        >>>         return (data, {'need_to_boost_by': boost_amount})
-        >>>     return (data, {})
+	>>> def reject(data, reject_value=None, **kwargs):
+	>>>     if reject_value is None:
+	>>>         return data
+	>>>     if data[0,0] == reject_value:
+	>>>         # --> Return data=None to reject data
+	>>>         return None
+	>>>     return data
+	>>> 
+	>>> def boost_later(data, boost_target=None, boost_amount=None, **kwargs):
+	>>>     if boost_target is None or boost_amount is None:
+	>>>         return data
+	>>>     if data[0,0] == boost_target:
+	>>>         add_kwargs = {'need_to_boost_by': boost_amount}
+	>>>         retval = {'bmp_data': data,
+	>>>                   'bmp_kwargs': add_kwargs}
+	>>>         return retval
+	>>>     return data
 
     post_process_list : list
 
-        List of functions called by :func:`post_process` after
-        primary processing step.  Indended to enable additional
-        processing steps and produce metadata as discussed in
-        :ref:`Discussion of Design <design>`.  Each function must
-        accept two positional parameters, ``data`` and ``meta`` and
-        any optional kwargs.  ``Meta`` will be of type `dict`.  The
-        return value of each function must be a `tuple` in the form
-        ``(data, additional_meta)``, where ``additional_metadata``
-        must be of type `dict.` Because ``meta`` is of type `dict`, it
-        can be modified directly in the function.  In this case, the
-        user can return either {} or ``meta`` as ``additional_meta``,
-        since the calling routine, :meth:`post_process`. uses
-        :meth:`dict.update` to merge ``additional_metadata`` into
-        ``meta``.  Below are examples.  See :ref:`Example` for an
-        example of how to use them in a functioning pipeline.
+        List of functions called by :func:`post_process` after primary
+        processing step.  Indended to enable additional processing
+        steps and produce metadata as discussed in :ref:`Discussion of
+        Design <design>`.  Each function must accept one positional
+        parameter, ``data``, one optional keyword parameter,
+        ``bmp_meta``, any keywords needed by the function, and an
+        arbitrary list of keywords handled by the ``**kwargs``
+        feature.  ``bmp_meta`` is of type `dict`.  The return value of
+        each function is intended to be the data but it not restricted
+        in any way.  If ``None`` is return, processing stops for that
+        file, ``None`` is returned for that file's data and the
+        metadata accumulated to that point is returned as that file's
+        metadata.  :meth:`bmp_meta.clear() <dict.clear()>` can be used
+        in the terminating ``post_process_list`` routine if it is
+        desirable to erase the metadata.  See :ref:`Example` for
+        examples of a simple functioning pipeline.
 
-        >>> def later_booster(data, meta, need_to_boost_by=None, **kwargs):
-        >>>     if need_to_boost_by is None:
-        >>>         return (data, {})
-        >>>     data = data + need_to_boost_by
-        >>>     return (data, {})
-        >>> 
-        >>> def average(data, meta, **kwargs):
-        >>>     av = np.average(data)
-        >>>     return (data, {'average': av})
-
+	>>> def later_booster(data, need_to_boost_by=None, **kwargs):
+	>>>     if need_to_boost_by is not None:
+	>>>         data = data + need_to_boost_by
+	>>>     return data
+	>>> 
+	>>> def median(data, bmp_meta=None, **kwargs):
+	>>>     median = np.median(data)
+	>>>     if bmp_meta is not None:
+	>>>         bmp_meta['median'] = median
+	>>>     return data
+	>>> 
 
     PoolClass : class name or None, optional
 
@@ -251,30 +255,36 @@ class BigMultiPipe():
         ``None``, :class:`multiprocessing.pool.Pool` is used.  Default is
         ``None.``
 
-    kwargs : dict, optional
-        Python's kwargs construct stores additional keyword
-        arguments as a dict.  In order to implement the control stream
-        discussed in the introduction to this module, this dict is
-        captured as property.  When any methods are run, the kwargs
-        from the property are copied to a new dict object and combined
-        with the kwargs passed to the method using :meth:`dict.update()`.
-        This allows the parameters passed to the methods at runtime to
+    \*\*kwargs : optional
+
+        Python's ``**kwargs`` construct stores additional keyword
+        arguments as a `dict` accessed in the function as ``kwargs``.
+        In order to implement the control stream discussed in the
+        introduction to this module, this `dict` is captured as
+        property on instantiation.  When any methods are run, the
+        ``kwargs`` passed to that method are merged with the property
+        ``kwargs`` using :meth:`~BigMultiPipe.kwargs_merge()`.  This
+        allows the parameters passed to the methods at runtime to
         override the parameters passed to the object at instantiation
-        time.  This also provides a mechanism for any function in the
-        system to modify the kwargs dict for flexible per-file control
-        of the pipeline.
+        time.
 
     Notes
     -----
 
-    All parameters passed at object instantiation are stored as
-    property and used to initialize the identical list of parameters
-    to the :func:`BigMultiPipe.pipeline` method.  Any of these
-    parameters can be overridden when that method is called by using
-    the corresponding keyword (e.g., ``mem_frac=0.2``,
-    ``pre_process_list=[reject_bad_file]``, etc.).  This enables
-    definition of a default pipeline configuration when the object is
-    instantiated that can be modified at run-time.
+    Just like ``**kwargs``, all named parameters passed at object
+    instantiation are stored as property and used to initialize the
+    identical list of parameters to the :func:`BigMultiPipe.pipeline`
+    method.  Any of these parameters *except* ``pre_process_list`` and
+    ``post_process_list`` can be overridden when
+    :func:`~BigMultiPipe.pipeline` is called by using the
+    corresponding keyword.  This enables definition of a default
+    pipeline configuration when the object is instantiated that can be
+    modified at run-time.  The exception to this are
+    ``pre_process_list`` and ``post_process_list``.  When these are
+    provided to :func:`~BigMultiPipe.pipeline`, they are added to
+    corresponding lists provided at instantiation time.  To erase
+    these lists in the object simply set their property to None:
+    e.g. `BigMultipipe.pre_process_list` = None
 
     """
     def __init__(self,
@@ -293,10 +303,6 @@ class BigMultiPipe():
         self.mem_available = mem_available
         self.mem_frac = mem_frac
         self.process_size = process_size
-        if pre_process_list is None:
-            pre_process_list = []
-        if post_process_list is None:
-            post_process_list = []
         self.pre_process_list = pre_process_list
         self.post_process_list = post_process_list
         if PoolClass is None:
@@ -306,6 +312,42 @@ class BigMultiPipe():
         self.create_outdir = create_outdir
         self.outname_append = outname_append
         self.kwargs = kwargs
+
+    def assure_list(self, x):
+        """Assures x is type `list`"""
+        if x is None:
+            x = []
+        if not isinstance(x, list):
+            x = [x]
+        return x
+
+    @property
+    def pre_process_list(self):
+        """
+        list or None : List of pre-processing routines
+
+        See documentation of `BigMultipipe` ``pre_process_list`` keyword
+
+        """
+        return self._pre_process_list
+
+    @pre_process_list.setter
+    def pre_process_list(self, value):
+        self._pre_process_list = self.assure_list(value)
+
+    @property
+    def post_process_list(self):
+        """
+        list or None : List of post-processing routines
+
+        See documentation of `BigMultipipe` ``post_process_list`` keyword
+
+        """
+        return self._post_process_list
+
+    @post_process_list.setter
+    def post_process_list(self, value):
+        self._post_process_list = self.assure_list(value)
 
     def kwargs_merge(self, **kwargs):
         """Merge \*\*kwargs with \*\*kwargs provided on instantiation
@@ -404,6 +446,10 @@ class BigMultiPipe():
         data = self.file_read(in_name, **kwargs)
         if data is None:
             return (None, {})
+        (data, add_kwargs) = self.pre_process(data, **kwargs)
+        if data is None:
+            return (None, {})
+        kwargs.update(add_kwargs)
         data, meta = \
             self.data_process_meta_create(data, in_name=in_name, **kwargs)
         if data is None:
@@ -477,10 +523,9 @@ class BigMultiPipe():
 
         """
         kwargs = self.kwargs_merge(**kwargs)
-        (data, kwargs) = self.pre_process(data, **kwargs)
+        data = self.data_process(data, **kwargs)
         if data is None:
             return(None, {})
-        data = self.data_process(data, **kwargs)
         data, meta = self.post_process(data, **kwargs)
         if data is None:
             return(None, {})
@@ -516,14 +561,21 @@ class BigMultiPipe():
 
         """
         kwargs = self.kwargs_merge(**kwargs)
-        if pre_process_list is None:
-            pre_process_list = []
+        pre_process_list = self.assure_list(pre_process_list)
         pre_process_list = self.pre_process_list + pre_process_list
         for pp in pre_process_list:
-            data, these_kwargs = pp(data, **kwargs)
-            kwargs.update(these_kwargs)
-            if data is None:
-                return (None, kwargs)
+            retval = pp(data, **kwargs)
+            if retval is None:
+                return (None, {})
+            if isinstance(retval, dict) and 'bmp_data' in retval:
+                data = retval['bmp_data']
+                these_kwargs = retval.get('bmp_kwargs')
+                if these_kwargs is None:
+                    these_kwargs = {}
+                kwargs.update(these_kwargs)
+            else:
+                # Data might be a dict
+                data = retval
         return (data, kwargs)
 
     def data_process(self, data, **kwargs):
@@ -573,21 +625,13 @@ class BigMultiPipe():
 
         """
         kwargs = self.kwargs_merge(**kwargs)
-        if post_process_list is None:
-            post_process_list = self.post_process_list
+        post_process_list = self.assure_list(post_process_list)
+        post_process_list = self.post_process_list + post_process_list
         meta = {}
-        if post_process_list is None:
-            post_process_list = []
         for pp in post_process_list:
-            retval = pp(data, bmp_meta=meta, **kwargs)
-            if retval is None:
-                return (None, {})
-            if isinstance(retval, dict) and 'bmp_data' in retval:
-                data = retval['bmp_data']
-                this_meta = retval.get('bmp_meta')
-                if this_meta is None:
-                    this_meta = {}
-                meta.update(this_meta)
+            data = pp(data, bmp_meta=meta, **kwargs)
+            if data is None:
+                return (None, bmp_meta)
         return (data, meta)
 
     def outname_create(self, in_name, data, meta,

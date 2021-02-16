@@ -124,7 +124,6 @@ First the `for` loop case:
 >>> import os
 >>> from tempfile import TemporaryDirectory, TemporaryFile
 >>> import numpy as np
->>> 
 >>> # Write some large files
 >>> with TemporaryDirectory() as tmpdirname:
 >>>     in_names = []
@@ -156,14 +155,17 @@ First the `for` loop case:
 >>>         # Post-processing steps
 >>>         if flag_to_boost_later:
 >>>             data = data + boost_amount
->>>         meta.append({'average': np.average(data)})
+>>>         meta.append({'median': np.median(data),
+>>>                      'average': np.average(data)})
 >>>         outname = f + '_bmp'
 >>>         np.save(outname, data)
 >>>         outnames.append(outname)
+>>>     cleaned_innames = [os.path.basename(f) for f in in_names]
 >>>     cleaned_outnames = [os.path.basename(f) for f in outnames]
->>>     cleaned_pout = zip(cleaned_outnames, meta)
+>>>     cleaned_pout = zip(cleaned_innames, cleaned_outnames, meta)
 >>>     print(list(cleaned_pout))
-[('big_array_0.npy_bmp', {'average': 0.0}), ('big_array_1.npy_bmp', {'average': 10.0}), ('big_array_3.npy_bmp', {'average': 35.0}), ('big_array_4.npy_bmp', {'average': 40.0}), ('big_array_5.npy_bmp', {'average': 50.0}), ('big_array_6.npy_bmp', {'average': 60.0}), ('big_array_7.npy_bmp', {'average': 70.0}), ('big_array_8.npy_bmp', {'average': 80.0}), ('big_array_9.npy_bmp', {'average': 90.0})] # doctest: +STR_CMP
+>>> 
+[('big_array_0.npy', 'big_array_0.npy_bmp', {'median': 0.0, 'average': 0.0}), ('big_array_1.npy', 'big_array_1.npy_bmp', {'median': 10.0, 'average': 10.0}), ('big_array_2.npy', 'big_array_3.npy_bmp', {'median': 35.0, 'average': 35.0}), ('big_array_3.npy', 'big_array_4.npy_bmp', {'median': 40.0, 'average': 40.0}), ('big_array_4.npy', 'big_array_5.npy_bmp', {'median': 50.0, 'average': 50.0}), ('big_array_5.npy', 'big_array_6.npy_bmp', {'median': 60.0, 'average': 60.0}), ('big_array_6.npy', 'big_array_7.npy_bmp', {'median': 70.0, 'average': 70.0}), ('big_array_7.npy', 'big_array_8.npy_bmp', {'median': 80.0, 'average': 80.0}), ('big_array_8.npy', 'big_array_9.npy_bmp', {'median': 90.0, 'average': 90.0})]
 
 Now lets parallelize with `bigmultipipe` a few different ways:
 
@@ -204,9 +206,10 @@ Now lets parallelize with `bigmultipipe` a few different ways:
 >>>         # Post-processing steps
 >>>         if flag_to_boost_later:
 >>>             data = data + boost_amount
->>>         meta = {'average': np.average(data)}
+>>>         meta = {'median': np.median(data),
+>>>                 'average': np.average(data)}
 >>>         return (data, meta)
->>> 
+
 >>> # Write large files and process with DemoMultiPipe1
 >>> with TemporaryDirectory() as tmpdirname:
 >>>     in_names = []
@@ -228,7 +231,7 @@ Now lets parallelize with `bigmultipipe` a few different ways:
 >>> pruned_in_names = [os.path.basename(f) for f in pruned_in_names]
 >>> pretty_print = zip(pruned_in_names, pruned_outnames, meta)
 >>> print(list(pretty_print))
-[('big_array_0.npy', 'big_array_0_bmp.npy', {'average': 0.0}), ('big_array_1.npy', 'big_array_1_bmp.npy', {'average': 10.0}), ('big_array_3.npy', 'big_array_3_bmp.npy', {'average': 35.0}), ('big_array_4.npy', 'big_array_4_bmp.npy', {'average': 40.0}), ('big_array_5.npy', 'big_array_5_bmp.npy', {'average': 50.0}), ('big_array_6.npy', 'big_array_6_bmp.npy', {'average': 60.0}), ('big_array_7.npy', 'big_array_7_bmp.npy', {'average': 70.0}), ('big_array_8.npy', 'big_array_8_bmp.npy', {'average': 80.0}), ('big_array_9.npy', 'big_array_9_bmp.npy', {'average': 90.0})] # doctest: +STR_CMP
+[('big_array_0.npy', 'big_array_0_bmp.npy', {'median': 0.0, 'average': 0.0}), ('big_array_1.npy', 'big_array_1_bmp.npy', {'median': 10.0, 'average': 10.0}), ('big_array_3.npy', 'big_array_3_bmp.npy', {'median': 35.0, 'average': 35.0}), ('big_array_4.npy', 'big_array_4_bmp.npy', {'median': 40.0, 'average': 40.0}), ('big_array_5.npy', 'big_array_5_bmp.npy', {'median': 50.0, 'average': 50.0}), ('big_array_6.npy', 'big_array_6_bmp.npy', {'median': 60.0, 'average': 60.0}), ('big_array_7.npy', 'big_array_7_bmp.npy', {'median': 70.0, 'average': 70.0}), ('big_array_8.npy', 'big_array_8_bmp.npy', {'median': 80.0, 'average': 80.0}), ('big_array_9.npy', 'big_array_9_bmp.npy', {'median': 90.0, 'average': 90.0})]
 
 .. note::
    We override
@@ -257,33 +260,43 @@ Now lets parallelize with `bigmultipipe` a few different ways:
 >>> def reject(data, reject_value=None, **kwargs):
 >>>     """Example pre-processing function to reject data"""
 >>>     if reject_value is None:
->>>         return (data, {})
+>>>         return data
 >>>     if data[0,0] == reject_value:
 >>>         # --> Return data=None to reject data
->>>         return (None, {})
->>>     return (data, {})
+>>>         return None
+>>>     return data
 >>> 
 >>> def boost_later(data, boost_target=None, boost_amount=None, **kwargs):
 >>>     """Example pre-processing function that shows how to alter kwargs"""
 >>>     if boost_target is None or boost_amount is None:
->>>         return (data, {})
+>>>         return data
 >>>     if data[0,0] == boost_target:
->>>         # --> This is equivalent to setting a keyword parameter
->>>         # need_to_boost_by=boost_amount
->>>         return (data, {'need_to_boost_by': boost_amount})
->>>     return (data, {})
+>>>         add_kwargs = {'need_to_boost_by': boost_amount}
+>>>         retval = {'bmp_data': data,
+>>>                   'bmp_kwargs': add_kwargs}
+>>>         return retval
+>>>     return data
 >>> 
->>> def later_booster(data, meta, need_to_boost_by=None, **kwargs):
+>>> def later_booster(data, need_to_boost_by=None, **kwargs):
 >>>     """Example post-processing function.  Interprets keyword set by boost_later"""
->>>     if need_to_boost_by is None:
->>>         return (data, {})
->>>     data = data + need_to_boost_by
->>>     return (data, {})
+>>>     if need_to_boost_by is not None:
+>>>         data = data + need_to_boost_by
+>>>     return data
 >>> 
->>> def average(data, meta, **kwargs):
+>>> def median(data, bmp_meta=None, **kwargs):
+>>>     """Example metadata generator"""
+>>>     median = np.median(data)
+>>>     if bmp_meta is not None:
+>>>         bmp_meta['median'] = median
+>>>     return data
+>>> 
+>>> def average(data, bmp_meta=None, **kwargs):
 >>>     """Example metadata generator"""
 >>>     av = np.average(data)
->>>     return (data, {'average': av})
+>>>     local_meta = {'average': av}
+>>>     if bmp_meta is not None:
+>>>         bmp_meta.update(local_meta)
+>>>     return data
 >>> 
 >>> class DemoMultiPipe2(BigMultiPipe):
 >>> 
@@ -313,7 +326,7 @@ Now lets parallelize with `bigmultipipe` a few different ways:
 >>>     # assembled at instantiation and controlled at either
 >>>     # instantiation or runtime 
 >>>     dmp = DemoMultiPipe2(pre_process_list=[reject, boost_later],
->>>                          post_process_list=[later_booster, average],
+>>>                          post_process_list=[later_booster, median, average],
 >>>                          boost_target=3, outdir=tmpdirname)
 >>>     pout = dmp.pipeline(in_names, reject_value=2,
 >>>                         boost_amount=5)
@@ -323,55 +336,10 @@ Now lets parallelize with `bigmultipipe` a few different ways:
 >>> pruned_outnames, pruned_meta = zip(*pruned_pout)
 >>> pruned_outnames = [os.path.basename(f) for f in pruned_outnames]
 >>> pruned_in_names = [os.path.basename(f) for f in pruned_in_names]
->>> pretty_print = zip(pruned_in_names, pruned_outnames, meta)
+>>> pretty_print = zip(pruned_in_names, pruned_outnames, pruned_meta)
 >>> print(list(pretty_print))
-[('big_array_0.npy_bmp', {'average': 0.0}), ('big_array_1.npy_bmp', {'average': 10.0}), ('big_array_3.npy_bmp', {'average': 35.0}), ('big_array_4.npy_bmp', {'average': 40.0}), ('big_array_5.npy_bmp', {'average': 50.0}), ('big_array_6.npy_bmp', {'average': 60.0}), ('big_array_7.npy_bmp', {'average': 70.0}), ('big_array_8.npy_bmp', {'average': 80.0}), ('big_array_9.npy_bmp', {'average': 90.0})] # doctest: +STR_CMP
+[('big_array_0.npy', 'big_array_0_bmp.npy', {'median': 0.0, 'average': 0.0}), ('big_array_1.npy', 'big_array_1_bmp.npy', {'median': 10.0, 'average': 10.0}), ('big_array_3.npy', 'big_array_3_bmp.npy', {'median': 35.0, 'average': 35.0}), ('big_array_4.npy', 'big_array_4_bmp.npy', {'median': 40.0, 'average': 40.0}), ('big_array_5.npy', 'big_array_5_bmp.npy', {'median': 50.0, 'average': 50.0}), ('big_array_6.npy', 'big_array_6_bmp.npy', {'median': 60.0, 'average': 60.0}), ('big_array_7.npy', 'big_array_7_bmp.npy', {'median': 70.0, 'average': 70.0}), ('big_array_8.npy', 'big_array_8_bmp.npy', {'median': 80.0, 'average': 80.0}), ('big_array_9.npy', 'big_array_9_bmp.npy', {'median': 90.0, 'average': 90.0})]
 
 .. note::
-   In case (2), we just need to override the
-   :meth:`~bigmultipipe.BigMultiPipe.data_process` method, since the
-   ``pre_process_list`` and ``post_process_list`` routines handle all
-   the rest.
-
-.. note::
-   
-   When working with the ``post_process_list`` routines, or ``meta``
-   in general, the ``meta`` `dict` itself can be modified rather than
-   just returning a small dictionary.  With that in mind, here is
-   `average` written two additional ways, both of which yield the same
-   results because of the way
-   :meth:`~bigmultipipe.BigMultiPipe.post_process` merges the ``meta``
-   return value using :meth:`dict.update`:
-
-   >>> def average(data, meta, **kwargs):
-   >>>     av = np.average(data)
-   >>>     meta['average'] = av
-   >>>     return (data, {})
-
-   >>> def average(data, meta, **kwargs):
-   >>>     av = np.average(data)
-   >>>     meta['average'] = av
-   >>>     return (data, meta)
-
-.. note::
-   
-   For ``kwargs`` processed in ``pre_process_list`` routines, the
-   ``kwargs`` `dict`, or at leaest the part of it you wish to modify,
-   must be passed back explicitly, as shown in the ``boost_later``
-   example.  This is because of the magic of how Python implements
-   ``**kwargs.`` Unlike ``meta`` in the previous note, when
-   ``**kwargs`` are passed into the called routine, a local variable
-   ``kwargs`` is created.  This is a `dict` of the form ``{'keyword1':
-   value1, 'keyword1': value2}``.  Thus, modifying ``kwargs`` does not
-   affect the original ``**kwargs``.  Nevertheless, it is possible to
-   querey and extract existing keywords from ``kwargs`` and return
-   them to :meth:`~bigmultipipe.BigMultiPipe.pre_process` for merging
-   into the ``kwargs`` that are passed to subsequent routines.  This
-   provides one mechanism for implementing the "control" channel of
-   `bigmultipipe`, as discussed in `Discussion of Design`_.  Another
-   method is to define property in the subclassed
-   :class:`~bigmultipipe.BigMultiPipe`.  The advantage of using the
-   ``**kwargs``-based control channel is that the components that
-   control it can be assembled via the ``pre_preocess_list`` mechanism
-   at runtime, thus providing a mechanism for algorithmic control of
-   the pipeline construction process.
+   The ``median`` and ``average`` functions show two different ways to
+   create local metadata and merge it into the `BigMultiPipe` metadata

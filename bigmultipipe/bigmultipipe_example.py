@@ -39,12 +39,14 @@ with TemporaryDirectory() as tmpdirname:
         # Post-processing steps
         if flag_to_boost_later:
             data = data + boost_amount
-        meta.append({'average': np.average(data)})
+        meta.append({'median': np.median(data),
+                     'average': np.average(data)})
         outname = f + '_bmp'
         np.save(outname, data)
         outnames.append(outname)
+    cleaned_innames = [os.path.basename(f) for f in in_names]
     cleaned_outnames = [os.path.basename(f) for f in outnames]
-    cleaned_pout = zip(cleaned_outnames, meta)
+    cleaned_pout = zip(cleaned_innames, cleaned_outnames, meta)
     print(list(cleaned_pout))
 
 # BigMultiPipe object for parallel processing above code, case (1)
@@ -77,7 +79,8 @@ class DemoMultiPipe1(BigMultiPipe):
         # Post-processing steps
         if flag_to_boost_later:
             data = data + boost_amount
-        meta = {'average': np.average(data)}
+        meta = {'median': np.median(data),
+                'average': np.average(data)}
         return (data, meta)
 
 # Write large files and process with DemoMultiPipe1
@@ -106,41 +109,42 @@ print(list(pretty_print))
 def reject(data, reject_value=None, **kwargs):
     """Example pre-processing function to reject data"""
     if reject_value is None:
-        return (data, {})
+        return data
     if data[0,0] == reject_value:
         # --> Return data=None to reject data
-        return (None, {})
-    return (data, {})
+        return None
+    return data
 
 def boost_later(data, boost_target=None, boost_amount=None, **kwargs):
     """Example pre-processing function that shows how to alter kwargs"""
     if boost_target is None or boost_amount is None:
-        return (data, {})
+        return data
     if data[0,0] == boost_target:
-        # --> This is equivalent to setting a keyword parameter
-        # need_to_boost_by=boost_amount
-        return (data, {'need_to_boost_by': boost_amount})
-    return (data, {})
+        add_kwargs = {'need_to_boost_by': boost_amount}
+        retval = {'bmp_data': data,
+                  'bmp_kwargs': add_kwargs}
+        return retval
+    return data
 
 def later_booster(data, need_to_boost_by=None, **kwargs):
     """Example post-processing function.  Interprets keyword set by boost_later"""
-    if need_to_boost_by is None:
-        return (data, {})
-    data = data + need_to_boost_by
+    if need_to_boost_by is not None:
+        data = data + need_to_boost_by
     return data
-
-def average(data, **kwargs):
-    """Example metadata generator"""
-    av = np.average(data)
-    retval = {'bmp_data': data,
-              'bmp_meta': {'average': av}}
-    return retval
 
 def median(data, bmp_meta=None, **kwargs):
     """Example metadata generator"""
     median = np.median(data)
     if bmp_meta is not None:
         bmp_meta['median'] = median
+    return data
+
+def average(data, bmp_meta=None, **kwargs):
+    """Example metadata generator"""
+    av = np.average(data)
+    local_meta = {'average': av}
+    if bmp_meta is not None:
+        bmp_meta.update(local_meta)
     return data
 
 class DemoMultiPipe2(BigMultiPipe):
@@ -171,7 +175,7 @@ with TemporaryDirectory() as tmpdirname:
     # assembled at instantiation and controlled at either
     # instantiation or runtime 
     dmp = DemoMultiPipe2(pre_process_list=[reject, boost_later],
-                         post_process_list=[later_booster, average],
+                         post_process_list=[later_booster, median, average],
                          boost_target=3, outdir=tmpdirname)
     pout = dmp.pipeline(in_names, reject_value=2,
                         boost_amount=5)
@@ -181,5 +185,6 @@ pruned_pout, pruned_in_names = prune_pout(pout, in_names)
 pruned_outnames, pruned_meta = zip(*pruned_pout)
 pruned_outnames = [os.path.basename(f) for f in pruned_outnames]
 pruned_in_names = [os.path.basename(f) for f in pruned_in_names]
-pretty_print = zip(pruned_in_names, pruned_outnames, meta)
+pretty_print = zip(pruned_in_names, pruned_outnames, pruned_meta)
 print(list(pretty_print))
+
