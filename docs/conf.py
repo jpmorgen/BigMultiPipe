@@ -29,9 +29,9 @@ copyright = '2021, Jeffrey P. Morgenthaler'
 author = 'Jeffrey P. Morgenthaler'
 
 # The short X.Y version
-version = ''
+version = '0.1.0'
 # The full version, including alpha/beta/rc tags
-release = 'initial'
+release = 'v0.1.0'
 
 
 # -- General configuration ---------------------------------------------------

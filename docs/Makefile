@@ -13,8 +13,12 @@ help:
 
 .PHONY: help Makefile clean
 
+#bigmultipipe: ../bigmultipipe/bigmultipipe.py
+
 # Catch-all target: route all unknown targets to Sphinx using the new
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
+# Include bigmultipipe.py to get changes incorporated automatically in api
+# (Not able to figure this out yet)
 %: Makefile
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
 

@@ -370,7 +370,8 @@ class BigMultiPipe():
                  process_size=None,
                  PoolClass=None,
                  **kwargs):
-        """Runs pipeline, maximizing processing and memory resources
+        """
+        Runs pipeline, maximizing processing and memory resources
 
         Parameters
         ----------
@@ -454,7 +455,8 @@ class BigMultiPipe():
             self.data_process_meta_create(data, in_name=in_name, **kwargs)
         if data is None:
             return (None, meta)
-        outname = self.outname_create(in_name, data, meta, **kwargs)
+        # Make data and meta available for convenience for subclasses.
+        outname = self.outname_create(in_name, data=data, meta=meta, **kwargs)
         outname = self.file_write(data, outname, **kwargs)
         return (outname, meta)
 
@@ -592,7 +594,7 @@ class BigMultiPipe():
             Processed data
         """
         kwargs = self.kwargs_merge(**kwargs)
-        # Insert call to processing code here
+        # --> Insert call to processing code here
         return data
 
     def post_process(self, data,
@@ -631,10 +633,10 @@ class BigMultiPipe():
         for pp in post_process_list:
             data = pp(data, bmp_meta=meta, **kwargs)
             if data is None:
-                return (None, bmp_meta)
+                return (None, meta)
         return (data, meta)
 
-    def outname_create(self, in_name, data, meta,
+    def outname_create(self, in_name,
                        outdir=None,
                        create_outdir=None,
                        outname_append=None,
@@ -645,9 +647,6 @@ class BigMultiPipe():
         ----------
         in_name : str
             Name of input raw data file
-
-        data : any type
-            Processed data
 
         All other parameters : see Parameters to :class:`BigMultiPipe`
 
