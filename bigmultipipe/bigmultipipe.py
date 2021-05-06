@@ -529,8 +529,6 @@ class BigMultiPipe():
         if data is None:
             return(None, {})
         data, meta = self.post_process(data, **kwargs)
-        if data is None:
-            return(None, {})
         return (data, meta)
 
     def pre_process(self, data,
@@ -679,6 +677,11 @@ class BigMultiPipe():
         outname = os.path.join(outdir, outbname)
         return outname
 
+def no_outfile(data, **kwargs):
+    """`bigmultipipe` post-processing routine that stops pipeline processing and returns accumulated metadata without writing any output files.  Put last in `BigMultiPipe.post_process_list``
+    """
+    return None
+
 def prune_pout(pout, in_names):
     """Removes entries marked for deletion in a BigMultiPipe.pipeline() output
 
@@ -704,8 +707,8 @@ def prune_pout(pout, in_names):
     pruned_pout = []
     pruned_in_names = []
     for i in range(len(pout)):
-        if pout[i][0] is None:
-            # bmp is None
+        if pout[i][0] is None and pout[i][1] == {}:
+            # outfname AND meta are empty
             continue
         pruned_pout.append(pout[i])
         pruned_in_names.append(in_names[i])
