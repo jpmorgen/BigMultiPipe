@@ -8,11 +8,19 @@ import multiprocessing.pool
 
 import psutil
 
+#########
 # Adapted from various source on the web
+# WORKS FOR PYTHON <=3.7
 # https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic
 class NoDaemonProcess(multiprocessing.Process):
-    """Make ``daemon`` attribute always return False, thus enabling
-    child processes to run their own sub-processes"""
+    """For Python <=3.7, make ``daemon`` attribute always return False,
+    thus enabling child processes to run their own sub-processes.  See
+    discussion in
+    https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic
+    for uses and dangers.  Only appropriate where all parents are
+    waiting for children to finish.
+
+    """
     def _get_daemon(self):
         """Always returns `False`"""
         return False
@@ -25,6 +33,37 @@ class NoDaemonProcess(multiprocessing.Process):
 class NoDaemonPool(multiprocessing.pool.Pool):
     """Works with :class:`NoDaemonProcess` to allows child processes to run their own sub-processes"""
     Process = NoDaemonProcess
+
+class NoDaemonProcess(multiprocessing.Process):
+    @property
+    def daemon(self):
+        return False
+
+    @daemon.setter
+    def daemon(self, value):
+        pass
+
+#######
+# Adapted from various source on the web
+# WORKS FOR PYTHON = 3.9
+# https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic
+class NoDaemonContext(type(multiprocessing.get_context())):
+    Process = NoDaemonProcess
+
+# We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
+# because the latter is only a wrapper function, not a proper class.
+class NestablePool(multiprocessing.pool.Pool):
+    """For Python = 3.0 enable child processes of Pool to run their own
+    sub-processes.  Only appropriate where all parents are waiting for
+    children to finish.  See discussion in
+    https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic
+
+    """    
+    def __init__(self, *args, **kwargs):
+        kwargs['context'] = NoDaemonContext()
+        super(NestablePool, self).__init__(*args, **kwargs)
+
+##########
 
 class WorkerWithKwargs():
     """
@@ -86,14 +125,16 @@ class WorkerWithKwargs():
 
         return self.function(*args, **self.kwargs)
 
+###########
+# Utilties#
+###########
 def num_can_process(num_to_process=None,
                     num_processes=None,
                     mem_available=None,
                     mem_frac=0.8,
                     process_size=None,
                     error_if_zero=True):
-    """
-    Calculates maximum number of processes that can run simultaneously
+    """Calculates maximum number of processes that can run simultaneously
 
     Parameters
     ----------
@@ -104,11 +145,12 @@ def num_can_process(num_to_process=None,
         If ``None``, not used in calculation.
         Default is ``None``
 
-    num_processes : int or ``None``, optional
-        Maximum number of parallel processes.  If ``None``, set to the
+    num_processes : number or ``None``, optional
+        Maximum number of parallel processes.  If ``None`` or 0, set to the
         number of physical (not logical) cores available using
-        :func:`psutil.cpu_count(logical=False) <psutil.cpu_count>`
-        Default is ``None``
+        :func:`psutil.cpu_count(logical=False) <psutil.cpu_count>`.
+        If less than 1, the fraction of maximum cores to use.  Default
+        is ``None``
 
     mem_available : int or None. optional
         Amount of memory available in bytes for the total set of 
@@ -134,8 +176,13 @@ def num_can_process(num_to_process=None,
         Default is ``True``
 
     """
-    if num_processes is None:
+    if num_processes is None or num_processes == 0:
         num_processes = psutil.cpu_count(logical=False)
+    if num_processes < 0:
+        raise ValueError(f'Illegal value of num_processes {num_processes}')
+    if num_processes < 1:
+        num_processes = max(1, round(num_processes *
+                                     psutil.cpu_count(logical=False)))        
     if num_to_process is None:
         num_to_process = num_processes
     if mem_available is not None:
@@ -151,6 +198,51 @@ def num_can_process(num_to_process=None,
         raise EnvironmentError(f'Current memory {max_mem/2**20} MiB insufficient for process size {process_size/2**20} MiB')
 
     return min(num_to_process, num_processes, max_n)
+
+def assure_list(x):
+    """Assures x is type `list`.  ``None`` is treated as an empty list"""
+    if x is None:
+        x = []
+    if not isinstance(x, list):
+        x = [x]
+    return x
+
+def bmp_cleanup(data,
+                bmp_meta=None,
+                add=None):
+    """Enables select `BigMultiPipe` metadata to be deleted after all
+    `~bigmultipipe.BigMultiPipe` post-processing routines have
+    completed.  
+
+    Parameters
+    ----------
+    bmp_meta : dict
+        `BigMultiPipe` metadata dictionary
+
+    add : str or list of str
+        `bmp_meta` keyword(s) that will be deleted
+
+    Notes
+    -----
+    Intended to be called using the `add` keyword from the routine
+    adding key(s) to `bmp_meta`.  See :ref:`Discussion of Design
+    <design>` and `~bigmultipipe.BigMultiPipe` `post_process_list`
+    documentation
+
+    """
+    cleanup_list = bmp_meta.get('bmp_cleanup_list')
+    cleanup_list = assure_list(cleanup_list)
+    if add is None:
+        # Called from BitMultiPipe.post_process
+        for c in cleanup_list:
+            del bmp_meta[c]
+        if len(cleanup_list) > 0:
+            del bmp_meta['bmp_cleanup_list']
+    else:
+        add = assure_list(add)
+        cleanup_list += add
+        bmp_meta['bmp_cleanup_list'] = cleanup_list
+    return data
 
 class BigMultiPipe():
     """Base class for memory- and processing power-optimized pipelines
@@ -313,14 +405,6 @@ class BigMultiPipe():
         self.outname_append = outname_append
         self.kwargs = kwargs
 
-    def assure_list(self, x):
-        """Assures x is type `list`"""
-        if x is None:
-            x = []
-        if not isinstance(x, list):
-            x = [x]
-        return x
-
     @property
     def pre_process_list(self):
         """
@@ -333,7 +417,7 @@ class BigMultiPipe():
 
     @pre_process_list.setter
     def pre_process_list(self, value):
-        self._pre_process_list = self.assure_list(value)
+        self._pre_process_list = assure_list(value)
 
     @property
     def post_process_list(self):
@@ -347,7 +431,7 @@ class BigMultiPipe():
 
     @post_process_list.setter
     def post_process_list(self, value):
-        self._post_process_list = self.assure_list(value)
+        self._post_process_list = assure_list(value)
 
     def kwargs_merge(self, **kwargs):
         """Merge \*\*kwargs with \*\*kwargs provided on instantiation
@@ -370,8 +454,7 @@ class BigMultiPipe():
                  process_size=None,
                  PoolClass=None,
                  **kwargs):
-        """
-        Runs pipeline, maximizing processing and memory resources
+        """Runs pipeline, maximizing processing and memory resources
 
         Parameters
         ----------
@@ -384,13 +467,14 @@ class BigMultiPipe():
         Returns
         -------
 
-        pout : `list` of tuples ``(outname, meta)``, one `tuple` for each
-            ``in_name``.  ``Outname`` is `str` or ``None``.  If `str`,
-            it is the name of the file to which the processed data
-            were written.  If ``None``, the convenience function
-            :func:`prune_pout` can be used to remove this tuple from
-            ``pout`` and the corresponding in_name from the in_names list.
-            ``Meta`` is a `dict` containing output.
+        pout : `list` of tuples ``(outname, meta)``, one `tuple` for
+            each ``in_name``.  ``Outname`` is `str` or ``None``,
+            ``meta`` is a `dict` containing metadata output.  If
+            ``outname`` is `str`, it is the name of the file to which
+            the processed data were written.  If ``None`` *and* meta =
+            {}, the convenience function :func:`prune_pout` can be
+            used to remove this tuple from ``pout`` and the
+            corresponding in_name from the in_names list.
 
         """
         if num_processes is None:
@@ -561,7 +645,7 @@ class BigMultiPipe():
 
         """
         kwargs = self.kwargs_merge(**kwargs)
-        pre_process_list = self.assure_list(pre_process_list)
+        pre_process_list = assure_list(pre_process_list)
         pre_process_list = self.pre_process_list + pre_process_list
         for pp in pre_process_list:
             retval = pp(data, **kwargs)
@@ -597,6 +681,7 @@ class BigMultiPipe():
 
     def post_process(self, data,
                      post_process_list=None,
+                     no_bmp_cleanup=False,
                      **kwargs):
         """Conduct post-processing tasks, including creation of metadata
 
@@ -615,6 +700,12 @@ class BigMultiPipe():
             See documentation for this parameter in Parameters section
             of :class:`BigMultiPipe`
 
+        no_bmp_cleanup : bool
+            Do not run `bmp_cleanup` post-processing task even if
+            keywords have been added to the bmp_cleanup_list (provided
+            for debugging purposes).
+            Default is `False`
+
         kwargs : see Notes in :class:`BigMultiPipe` Parameter section
 
         Returns
@@ -625,13 +716,16 @@ class BigMultiPipe():
 
         """
         kwargs = self.kwargs_merge(**kwargs)
-        post_process_list = self.assure_list(post_process_list)
+        post_process_list = assure_list(post_process_list)
         post_process_list = self.post_process_list + post_process_list
         meta = {}
         for pp in post_process_list:
             data = pp(data, bmp_meta=meta, **kwargs)
             if data is None:
-                return (None, meta)
+                # Stop our pipeline, but remember to clean up!
+                break
+        if not no_bmp_cleanup:
+            data = bmp_cleanup(data, bmp_meta=meta)
         return (data, meta)
 
     def outname_create(self, in_name,
@@ -684,6 +778,9 @@ def no_outfile(data, **kwargs):
 
 def prune_pout(pout, in_names):
     """Removes entries marked for deletion in a BigMultiPipe.pipeline() output
+
+    To mark an entry for deletion, ``outfname`` must be `None` *and*
+    ``meta`` must be `{}`
 
     Parameters
     ----------

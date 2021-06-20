@@ -44,7 +44,7 @@ problem of parallel processing large data structures.  Stream (1) is
 the data, which begins and ends on disk, thus side-stepping the issues
 of inter-process communication discussed in the `Background`_ section.
 Stream (2) is control.  This stream is intended to control the primary
-processing step, but can also control pre-processing, post processing,
+processing step, but can also control pre-processing, post-processing,
 file name creation and file writing.  The control stream starts as the
 keywords that are provided to a :class:`~bigmultipipe.BigMultiPipe`
 object on instantiation.  Using Python's flexible ``**kwarg`` feature,
@@ -56,8 +56,15 @@ the output metadata.  Stream (3) is returned to the caller along with
 the output filename of each processed file for use in subsequent
 processing steps.  Stream (3) can be used to minimize the number of
 times the large output data files are re-read during subsequent
-processing.  That said, as discussed in the `Background`_ section, the
-amount of information returned as metadata should be modest in size.
+processing.  As discussed in the `Background`_ section, the amount of
+information returned as metadata should be modest in size.  The
+:func:`bigmultipipe.bmp_cleanup()` function can be used to remove
+large items from the metadata that may have been used to relay
+intermediate results between post-processing steps.  Alternately,
+large metadata items not intended for return to the calling process
+can be stored in an object passed via the control stream (i.e. as a
+keyword of `~bigmultipipe.BigMultiPipe` or
+:meth:`BigMultiPipe.pipeline() <bigmultipipe.BigMultiPipe.pipeline>`).
 
 .. _background:
 
