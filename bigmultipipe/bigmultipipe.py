@@ -1,6 +1,7 @@
 """Provides tools for parallel pipeline processing of large data structures"""
 
 import os
+import pickle
 import multiprocessing
 # For NoDaemonPool we must import this explicitly, it is not
 # imported by the top-level multiprocessing module.
@@ -8,19 +9,11 @@ import multiprocessing.pool
 
 import psutil
 
-#########
-# Adapted from various source on the web
-# WORKS FOR PYTHON <=3.7
-# https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic
-class NoDaemonProcess(multiprocessing.Process):
-    """For Python <=3.7, make ``daemon`` attribute always return False,
-    thus enabling child processes to run their own sub-processes.  See
-    discussion in
-    https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic
-    for uses and dangers.  Only appropriate where all parents are
-    waiting for children to finish.
+OUTNAME_APPEND = '_bmp'
 
-    """
+####### NoDaemonProcess37 ######
+class NoDaemonProcess37(multiprocessing.Process):
+    """Used for `bigmultipipe.NoDaemonPool37`"""
     def _get_daemon(self):
         """Always returns `False`"""
         return False
@@ -30,11 +23,20 @@ class NoDaemonProcess(multiprocessing.Process):
 
 # We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
 # because the latter is only a wrapper function, not a proper class.
-class NoDaemonPool(multiprocessing.pool.Pool):
-    """Works with :class:`NoDaemonProcess` to allows child processes to run their own sub-processes"""
-    Process = NoDaemonProcess
+class NoDaemonPool37(multiprocessing.pool.Pool):
+    """For Python <=3.7,  enable child processes of
+    `~multiprocessing.pool.Pool` to run their own sub-processes.  Only
+    appropriate where all parents are waiting for children to finish.
+    Implementation has changed in future verisons of Python 
+    See discussion in
+    https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic
+    """
+    Process = NoDaemonProcess37
+####### NoDaemonProcess37 ######
 
+####### NestablePool #########
 class NoDaemonProcess(multiprocessing.Process):
+    """Used for `bigmultipipe.NestablePool`"""
     @property
     def daemon(self):
         return False
@@ -43,27 +45,361 @@ class NoDaemonProcess(multiprocessing.Process):
     def daemon(self, value):
         pass
 
-#######
-# Adapted from various source on the web
-# WORKS FOR PYTHON = 3.9
-# https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic
 class NoDaemonContext(type(multiprocessing.get_context())):
+    """Used for `bigmultipipe.NestablePool`"""
     Process = NoDaemonProcess
 
 # We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
 # because the latter is only a wrapper function, not a proper class.
 class NestablePool(multiprocessing.pool.Pool):
-    """For Python = 3.0 enable child processes of Pool to run their own
-    sub-processes.  Only appropriate where all parents are waiting for
-    children to finish.  See discussion in
+    """For Python = 3.9(+?) enable child processes of
+    `~multiprocessing.pool.Pool` to run their own sub-processes.  Only
+    appropriate where all parents are waiting for children to finish.
+    Implementation may change in future verison of Python
+    See discussion in
     https://stackoverflow.com/questions/6974695/python-process-pool-non-daemonic
 
     """    
     def __init__(self, *args, **kwargs):
         kwargs['context'] = NoDaemonContext()
         super(NestablePool, self).__init__(*args, **kwargs)
+####### NestablePool #########
 
-##########
+def assure_list(x):
+    """Assures x is type `list`.  ``None`` is treated as an empty list"""
+    if x is None:
+        x = []
+    if not isinstance(x, list):
+        x = [x]
+    return x
+
+def num_can_process(num_to_process=None,
+                    num_processes=None,
+                    mem_available=None,
+                    mem_frac=0.8,
+                    process_size=None,
+                    error_if_zero=True):
+    """Calculates maximum number of processes that can run simultaneously
+
+    Parameters
+    ----------
+
+    num_to_process : int or ``None``, optional
+        Total number of items to process.  This number is returned if
+        it is less than the maximum possible simultaneous processes.
+        If ``None``, not used in calculation.
+        Default is ``None``
+
+    num_processes : number or ``None``, optional
+        Maximum number of parallel processes.  If ``None`` or 0, set to the
+        number of physical (not logical) cores available using
+        :func:`psutil.cpu_count(logical=False) <psutil.cpu_count>`.
+        If less than 1, the fraction of maximum cores to use.  Default
+        is ``None``
+
+    mem_available : int or None. optional
+        Amount of memory available in bytes for the total set of 
+        processes.  If ``None``, ``mem_frac`` parameter is used.
+        Default is ``None``
+
+    mem_frac : float, optional
+        Maximum fraction of current memory available that total set of 
+        processes is allowed to occupy.  Current memory available is
+        queried
+        Default is ``0.8``
+
+    process_size : int, or None, optional
+        Maximum process size in bytes of an individual process.  If
+        None, processes are assumed to be small enough to all fit in
+        memory at once.
+        Default is ``None``
+
+    error_if_zero : bool, optional
+        If True, throw an :class:`EnvironmentError` error if return
+        value would be zero.  Useful for catching case when there is
+        not enough memory for even one process.  Set to ``False`` if
+        subprocess can handle subdividing  task.
+        Default is ``True``
+
+    Returns
+    -------
+    num_can_process : int
+        Maximum number of processes that can run simultaneously given
+        input parameters
+
+
+    """
+    if num_processes is None or num_processes == 0:
+        num_processes = psutil.cpu_count(logical=False)
+    if num_processes < 0:
+        raise ValueError(f'Illegal value of num_processes {num_processes}')
+    if num_processes < 1:
+        num_processes = max(1, round(num_processes *
+                                     psutil.cpu_count(logical=False)))        
+    if num_to_process is None:
+        num_to_process = num_processes
+    if mem_available is not None:
+        max_mem = mem_available
+    else:
+        mem = psutil.virtual_memory()
+        max_mem = mem.available*mem_frac
+    if process_size is None:
+        max_n = num_processes
+    else:
+        max_n = int(max_mem / process_size)
+    if error_if_zero and max_n == 0:
+        raise EnvironmentError(f'Current memory {max_mem/2**20} MiB '
+                               f'insufficient for process size '
+                               f'{process_size/2**20} MiB.  Set '
+                               'error_if_zero to False if subprocess '
+                               'can handle subdividing task.')
+
+    return min(num_to_process, num_processes, max_n)
+
+def multi_logging(level, meta, message):
+    """Implements logging on a per-process basis in
+    :class:`~bigmultipipe.BigMultiPipe` pipeline post-processing routines
+
+    Parameters
+    ----------
+    level : str
+        Log message level (e.g., "debug", "info", "warn, "error")
+
+    meta : dict
+        The meta channel of a :class:`~bigmultipipe.BigMultiPipe` pipeline
+
+    message : str
+        Log message
+
+    Examples
+    --------
+    >>> def post_process_error_example(data, bmp_meta=None, **kwargs):
+    >>>     multi_logging('warning', pipe_meta, 'Example log message')
+
+
+    """
+    # Work directly with the meta dictionary, thus a return value
+    # is not needed
+    if level in meta:
+        meta[level].append(message)
+    else:
+        meta[level] = [message]
+
+def bmp_cleanup(data,
+                bmp_meta=None,
+                add=None):
+    """Enables select `BigMultiPipe` metadata to be deleted after all
+    `~bigmultipipe.BigMultiPipe` post-processing routines have
+    completed.  
+
+    Parameters
+    ----------
+    bmp_meta : dict
+        `BigMultiPipe` metadata dictionary
+
+    add : str or list of str
+        `bmp_meta` keyword(s) that will be deleted
+
+    Examples
+    --------
+    In a `bigmultipipe` post-processing routine add the following call
+    to :func:`bmp_cleanup()` and `large_meta` will be automatically
+    removed after all other post-processing routines have run.
+
+    >>> def large_meta_producer(data, bmp_meta=None, **kwargs):
+    >>>     bmp_meta['large_meta'] = 'large'
+    >>>     bmp_cleanup(bmp_meta, add='large_meta')
+    >>>     return data
+
+    Notes
+    -----
+
+    As discussed in :ref:`Discussion of Design <design>`, this can be
+    used to enable multiple post-processing routines to share
+    information that would otherwise not be returnable on the
+    `bigmultipipe` metadata stream.  One can think of this as
+    implementing shared property of an object constructed on-the-fly
+    by several post-processing routines.  Depending on the
+    implementation, it may be more "pythonic" to create an object that
+    is passed through the control stream and access that as a keyword
+    in the post-processing routines.  See also
+    `~bigmultipipe.BigMultiPipe.post_process_list` documentation.
+
+    """
+    cleanup_list = bmp_meta.get('bmp_cleanup_list')
+    cleanup_list = assure_list(cleanup_list)
+    if add is None:
+        # Called from BitMultiPipe.post_process
+        for c in cleanup_list:
+            del bmp_meta[c]
+        if len(cleanup_list) > 0:
+            del bmp_meta['bmp_cleanup_list']
+    else:
+        add = assure_list(add)
+        cleanup_list += add
+        bmp_meta['bmp_cleanup_list'] = cleanup_list
+    return data
+
+def multi_proc(func, element_type=None, **kwargs):
+    """Returns a function which applies func to each element in a
+    (possibly nested) list.
+
+    Parameters
+    ----------
+    func : function
+        function to apply to items in list.  Function must have at
+        least one argument (see `**kwargs`)
+
+    element_type : type, optional
+        `type` of element to which `func` will be applied.  If
+        specified, allows nested lists of files to be processed        
+
+    **kwargs : passed to func
+        
+    Returns
+    -------
+    function
+
+    Examples
+    --------
+    >>> def plus1(data, **kwargs):
+    >>>     return data + 1
+    >>>
+    >>> def multi_plus1(data, **kwargs):
+    >>>     return multi_proc(plus1)(data)
+
+    Notes
+    -----
+    This function is useful when the list of `bigmultipipe` `in_names`
+    is not just a list of single files, but a list of possibly nested
+    lists and certain pre- and post-processing routines are best
+    applied to the individual elements of those lists (e.g. individual
+    files)
+
+    It is syntactically correct to use multi_proc to define a function
+    on-the-fly, e.g.:
+
+    >>> newfunc = multi_proc(plus1)
+
+    however that function becomes a member of `locals` and cannot be
+    pickled for passing in a multiprocessing environment.  The form in
+    `Examples` avoids the pickling error.  See 
+    https://stackoverflow.com/questions/52265120/python-multiprocessing-pool-attributeerror
+
+    """
+    if element_type is None:
+        # Nominal case, just a straight list of data items in data_list 
+        def ret_func(data_list, **kwargs):
+            return [func(data, **kwargs) for data in data_list]
+        return ret_func
+    # If we know element_type, we can get fancy with nested lists
+    def ret_func(data_list, **kwargs):
+        ret_list = []
+        for data in data_list:
+            if isinstance(data, element_type):
+                ret_list.append(func(data, **kwargs))
+            else:
+                ret_list.append(ret_func(data, **kwargs))
+        return ret_list
+    return ret_func
+
+def no_outfile(data, **kwargs):
+    """`bigmultipipe` post-processing routine that stops pipeline processing and returns accumulated metadata without writing any output files.  Put last in `BigMultiPipe.post_process_list`
+    """
+    return None
+
+def cached_pout(pipe_code,
+                poutname=None,
+                read_pout=False,
+                write_pout=False,
+                create_outdir=False,
+                **kwargs):
+    """Write/read :meth:`BigMultiPipe.pipeline()` metadata output
+    ("pout") to/from a file using `pickle`
+
+    Parameters
+    ----------
+    pipe_code : function
+        Function that executes `bigmultipipe` pipeline if `read_pout`
+        is ``False`` or `poutname` cannot be read.  Must return
+        pipeline metadata output ("pout")
+
+    poutname : str
+        Filename to be read/written
+
+    read_pout : bool
+        If `True` read pipeline output from `poutname`
+        Default is `False`
+
+    write_pout : bool
+        If `True` write pipeline output to `poutname`
+        Default is `False`
+
+    create_outdir : bool, optional
+        If ``True``, create any needed parent directories into which
+        poutname is to be saved.  This parameter is passed along to
+        pipe_code because it need not write the pipeline output files
+        to the same directory as poutname
+        Default is ``False``
+
+    **kwargs : keyword arguments to pass to `pipe_code`
+
+    Returns
+    -------
+    pout : dict
+        Pipeline metadata output
+
+    """
+    if read_pout:
+        try:
+            pout = pickle.load(open(poutname, "rb"))
+            return pout
+        except:
+            #log.debug(f'running code because file not found: {read_pout}')
+            pass
+    # Allow for pout to be written to a different place than pipeline's outdir
+    pout = pipe_code(create_outdir=create_outdir, **kwargs)
+    if write_pout:
+        if create_outdir:
+            os.makedirs(os.path.dirname(poutname), exist_ok=True)
+        pickle.dump(pout, open(poutname, "wb"))
+    return pout
+    
+def prune_pout(pout, in_names):
+    """Removes entries marked for deletion in a
+    :meth:`BigMultiPipe.pipeline()` output
+
+    To mark an entry for deletion, ``outfname`` must be `None` *and*
+    ``meta`` must be `{}`
+
+    Parameters
+    ----------
+    pout : list of tuples (str or ``None``, dict)
+        Output of a :meth:`BigMultiPipe.pipeline()
+        <bigmultipipe.BigMultiPipe.pipeline>` run.  The `str` are
+        pipeline output filenames, the `dict` is the output metadata.
+
+    in_names : list of str
+        Input file names to a :meth:`BigMultiPipe.pipeline()
+        <bigmultipipe.BigMultiPipe.pipeline>` run.  There will
+        be one ``pout`` for each ``in_name``
+
+    Returns
+    -------
+    (pruned_pout, pruned_in_names) : list of tuples (str, dict)
+        Pruned output with the ``None`` output filenames removed in both
+        the ``pout`` and ``in_name`` lists.
+
+    """
+    pruned_pout = []
+    pruned_in_names = []
+    for i in range(len(pout)):
+        if pout[i][0] is None and pout[i][1] == {}:
+            # outfname AND meta are empty
+            continue
+        pruned_pout.append(pout[i])
+        pruned_in_names.append(in_names[i])
+    return (pruned_pout, pruned_in_names)
 
 class WorkerWithKwargs():
     """
@@ -125,130 +461,14 @@ class WorkerWithKwargs():
 
         return self.function(*args, **self.kwargs)
 
-###########
-# Utilties#
-###########
-def num_can_process(num_to_process=None,
-                    num_processes=None,
-                    mem_available=None,
-                    mem_frac=0.8,
-                    process_size=None,
-                    error_if_zero=True):
-    """Calculates maximum number of processes that can run simultaneously
-
-    Parameters
-    ----------
-
-    num_to_process : int or ``None``, optional
-        Total number of items to process.  This number is returned if
-        it is less than the maximum possible simultaneous processes.
-        If ``None``, not used in calculation.
-        Default is ``None``
-
-    num_processes : number or ``None``, optional
-        Maximum number of parallel processes.  If ``None`` or 0, set to the
-        number of physical (not logical) cores available using
-        :func:`psutil.cpu_count(logical=False) <psutil.cpu_count>`.
-        If less than 1, the fraction of maximum cores to use.  Default
-        is ``None``
-
-    mem_available : int or None. optional
-        Amount of memory available in bytes for the total set of 
-        processes.  If ``None``, ``mem_frac`` parameter is used.
-        Default is ``None``
-
-    mem_frac : float, optional
-        Maximum fraction of current memory available that total set of 
-        processes is allowed to occupy.  Current memory available is
-        queried
-        Default is ``0.8``
-
-    process_size : int, or None, optional
-        Maximum process size in bytes of an individual process.  If
-        None, processes are assumed to be small enough to all fit in
-        memory at once.
-        Default is ``None``
-
-    error_if_zero : bool, optional
-        If True, throw an :class:`EnvironmentError` error if return
-        value would be zero.  Useful for catching case when there is
-        not enough memory for even one process.
-        Default is ``True``
-
-    """
-    if num_processes is None or num_processes == 0:
-        num_processes = psutil.cpu_count(logical=False)
-    if num_processes < 0:
-        raise ValueError(f'Illegal value of num_processes {num_processes}')
-    if num_processes < 1:
-        num_processes = max(1, round(num_processes *
-                                     psutil.cpu_count(logical=False)))        
-    if num_to_process is None:
-        num_to_process = num_processes
-    if mem_available is not None:
-        max_mem = mem_available
-    else:
-        mem = psutil.virtual_memory()
-        max_mem = mem.available*mem_frac
-    if process_size is None:
-        max_n = num_processes
-    else:
-        max_n = int(max_mem / process_size)
-    if error_if_zero and max_n == 0:
-        raise EnvironmentError(f'Current memory {max_mem/2**20} MiB insufficient for process size {process_size/2**20} MiB')
-
-    return min(num_to_process, num_processes, max_n)
-
-def assure_list(x):
-    """Assures x is type `list`.  ``None`` is treated as an empty list"""
-    if x is None:
-        x = []
-    if not isinstance(x, list):
-        x = [x]
-    return x
-
-def bmp_cleanup(data,
-                bmp_meta=None,
-                add=None):
-    """Enables select `BigMultiPipe` metadata to be deleted after all
-    `~bigmultipipe.BigMultiPipe` post-processing routines have
-    completed.  
-
-    Parameters
-    ----------
-    bmp_meta : dict
-        `BigMultiPipe` metadata dictionary
-
-    add : str or list of str
-        `bmp_meta` keyword(s) that will be deleted
-
-    Notes
-    -----
-    Intended to be called using the `add` keyword from the routine
-    adding key(s) to `bmp_meta`.  See :ref:`Discussion of Design
-    <design>` and `~bigmultipipe.BigMultiPipe` `post_process_list`
-    documentation
-
-    """
-    cleanup_list = bmp_meta.get('bmp_cleanup_list')
-    cleanup_list = assure_list(cleanup_list)
-    if add is None:
-        # Called from BitMultiPipe.post_process
-        for c in cleanup_list:
-            del bmp_meta[c]
-        if len(cleanup_list) > 0:
-            del bmp_meta['bmp_cleanup_list']
-    else:
-        add = assure_list(add)
-        cleanup_list += add
-        bmp_meta['bmp_cleanup_list'] = cleanup_list
-    return data
-
 class BigMultiPipe():
     """Base class for memory- and processing power-optimized pipelines
 
     Parameters
     ----------
+    outdir, create_outdir, outname_append, outname: see
+        :meth:`~BigMultiPipe.outname_create`
+
     num_processes, mem_available, mem_frac, process_size : optional
         These parameters tune computer processing and memory resources
         and are used when the :meth:`pipeline` method is executed.
@@ -256,88 +476,11 @@ class BigMultiPipe():
         that the ``num_to_process`` argument of that function is
         set to the number of input filenames in :meth:`pipeline`
 
-    outdir : str, None, optional
-    	Name of directory into which output files will be written.  If
-    	None, current directory in which the Python process is running
-    	will be used.
-        Default is ``None``
-
-    create_outdir : bool, optional
-        If True, create outdir and any needed parent directories.
-        Does not raise an error if outdir already exists.
-        Default is ``False``
-
-    outname_append : str, optional
-        String to append to outname to avoid risk of input file
-        overwrite.  Example input file ``test.dat`` would become
-        output file ``test_bmp.dat``
-        Default is ``_bmp``
-
     pre_process_list : list
-        List of functions called by :func:`pre_process` before primary
-        processing step.  Intended to implement filtering and control
-        features as described in :ref:`Discussion of Design <design>`.
-        Each function must accept one positional parameter, ``data``,
-        keyword arguments necessary for its internal functioning, and
-        ``**kwargs`` to ignore keyword parameters not processed by the
-        function.  If the return value of the function is ``None``,
-        processing of that file stops, no output file is written, and
-        ``None`` is returned instead of an output filename.  This is
-        how filtering is implemented.  Otherwise, the return value is
-        either ``data`` or a `dict` with two keys: ``bmp_data`` and
-        ``bmp_kwargs``.  In the later case, ``bmp_kwargs`` will be
-        merged into ``**kwargs``.  This is how the control channel is
-        implemented.  Below are examples.  See :ref:`Example` to see
-        this code in use in a functioning pipeline.
-
-	>>> def reject(data, reject_value=None, **kwargs):
-	>>>     if reject_value is None:
-	>>>         return data
-	>>>     if data[0,0] == reject_value:
-	>>>         # --> Return data=None to reject data
-	>>>         return None
-	>>>     return data
-	>>> 
-	>>> def boost_later(data, boost_target=None, boost_amount=None, **kwargs):
-	>>>     if boost_target is None or boost_amount is None:
-	>>>         return data
-	>>>     if data[0,0] == boost_target:
-	>>>         add_kwargs = {'need_to_boost_by': boost_amount}
-	>>>         retval = {'bmp_data': data,
-	>>>                   'bmp_kwargs': add_kwargs}
-	>>>         return retval
-	>>>     return data
+        See `~BigMultiPipe.pre_process_list` attribute
 
     post_process_list : list
-
-        List of functions called by :func:`post_process` after primary
-        processing step.  Indended to enable additional processing
-        steps and produce metadata as discussed in :ref:`Discussion of
-        Design <design>`.  Each function must accept one positional
-        parameter, ``data``, one optional keyword parameter,
-        ``bmp_meta``, any keywords needed by the function, and an
-        arbitrary list of keywords handled by the ``**kwargs``
-        feature.  ``bmp_meta`` is of type `dict`.  The return value of
-        each function is intended to be the data but it not restricted
-        in any way.  If ``None`` is return, processing stops for that
-        file, ``None`` is returned for that file's data and the
-        metadata accumulated to that point is returned as that file's
-        metadata.  :meth:`bmp_meta.clear() <dict.clear()>` can be used
-        in the terminating ``post_process_list`` routine if it is
-        desirable to erase the metadata.  See :ref:`Example` for
-        examples of a simple functioning pipeline.
-
-	>>> def later_booster(data, need_to_boost_by=None, **kwargs):
-	>>>     if need_to_boost_by is not None:
-	>>>         data = data + need_to_boost_by
-	>>>     return data
-	>>> 
-	>>> def median(data, bmp_meta=None, **kwargs):
-	>>>     median = np.median(data)
-	>>>     if bmp_meta is not None:
-	>>>         bmp_meta['median'] = median
-	>>>     return data
-	>>> 
+        See `~BigMultiPipe.post_process_list` attribute
 
     PoolClass : class name or None, optional
 
@@ -386,7 +529,7 @@ class BigMultiPipe():
                  process_size=None,
                  outdir=None,
                  create_outdir=False,
-                 outname_append='_bmp',
+                 outname_append=OUTNAME_APPEND,
                  pre_process_list=None,
                  post_process_list=None,
                  PoolClass=None,
@@ -407,10 +550,41 @@ class BigMultiPipe():
 
     @property
     def pre_process_list(self):
-        """
-        list or None : List of pre-processing routines
+        """ list or None : List of pre-processing routines
 
-        See documentation of `BigMultipipe` ``pre_process_list`` keyword
+        List of functions called by :func:`pre_process` before primary
+        processing step.  Intended to implement filtering and control
+        features as described in :ref:`Discussion of Design <design>`.
+        Each function must accept one positional parameter, ``data``,
+        keyword arguments necessary for its internal functioning, and
+        ``**kwargs`` to ignore keyword parameters not processed by the
+        function.  If the return value of the function is ``None``,
+        processing of that file stops, no output file is written, and
+        ``None`` is returned instead of an output filename.  This is
+        how filtering is implemented.  Otherwise, the return value is
+        either ``data`` or a `dict` with two keys: ``bmp_data`` and
+        ``bmp_kwargs``.  In the later case, ``bmp_kwargs`` will be
+        merged into ``**kwargs``.  This is how the control channel is
+        implemented.  Below are examples.  See :ref:`Example` to see
+        this code in use in a functioning pipeline.
+
+	>>> def reject(data, reject_value=None, **kwargs):
+	>>>     if reject_value is None:
+	>>>         return data
+	>>>     if data[0,0] == reject_value:
+	>>>         # --> Return data=None to reject data
+	>>>         return None
+	>>>     return data
+	>>> 
+	>>> def boost_later(data, boost_target=None, boost_amount=None, **kwargs):
+	>>>     if boost_target is None or boost_amount is None:
+	>>>         return data
+	>>>     if data[0,0] == boost_target:
+	>>>         add_kwargs = {'need_to_boost_by': boost_amount}
+	>>>         retval = {'bmp_data': data,
+	>>>                   'bmp_kwargs': add_kwargs}
+	>>>         return retval
+	>>>     return data
 
         """
         return self._pre_process_list
@@ -424,7 +598,34 @@ class BigMultiPipe():
         """
         list or None : List of post-processing routines
 
-        See documentation of `BigMultipipe` ``post_process_list`` keyword
+        List of functions called by :func:`post_process` after primary
+        processing step.  Indended to enable additional processing
+        steps and produce metadata as discussed in :ref:`Discussion of
+        Design <design>`.  Each function must accept one positional
+        parameter, ``data``, one optional keyword parameter,
+        ``bmp_meta``, any keywords needed by the function, and an
+        arbitrary list of keywords handled by the ``**kwargs``
+        feature.  ``bmp_meta`` is of type `dict`.  The return value of
+        each function is intended to be the data but it not restricted
+        in any way.  If ``None`` is return, processing stops for that
+        file, ``None`` is returned for that file's data and the
+        metadata accumulated to that point is returned as that file's
+        metadata.  :meth:`bmp_meta.clear() <dict.clear()>` can be used
+        in the terminating ``post_process_list`` routine if it is
+        desirable to erase the metadata.  See :ref:`Example` for
+        examples of a simple functioning pipeline.
+
+	>>> def later_booster(data, need_to_boost_by=None, **kwargs):
+	>>>     if need_to_boost_by is not None:
+	>>>         data = data + need_to_boost_by
+	>>>     return data
+	>>> 
+	>>> def median(data, bmp_meta=None, **kwargs):
+	>>>     m = np.median(data)
+	>>>     if bmp_meta is not None:
+	>>>         bmp_meta['median'] = m
+	>>>     return data
+	>>> 
 
         """
         return self._post_process_list
@@ -453,6 +654,10 @@ class BigMultiPipe():
                  mem_frac=None,
                  process_size=None,
                  PoolClass=None,
+                 outdir=None,
+                 create_outdir=None,
+                 outname_append=None,
+                 outname=None,
                  **kwargs):
         """Runs pipeline, maximizing processing and memory resources
 
@@ -477,23 +682,24 @@ class BigMultiPipe():
             corresponding in_name from the in_names list.
 
         """
-        if num_processes is None:
-            num_processes = self.num_processes
-        if mem_available is None:
-            mem_available = self.mem_available
-        if mem_frac is None:
-            mem_frac = self.mem_frac
-        if process_size is None:
-            process_size = self.process_size
-        if PoolClass is None:
-            PoolClass = self.PoolClass
+        num_processes = num_processes or self.num_processes
+        mem_available = mem_available or self.mem_available
+        mem_frac = mem_frac or self.mem_frac
+        process_size = process_size or self.process_size
+        PoolClass = PoolClass or self.PoolClass
+        outdir = outdir or self.outdir
+        create_outdir = create_outdir or self.create_outdir
+        outname_append = outname_append or self.outname_append
         kwargs = self.kwargs_merge(**kwargs)
         ncp = num_can_process(len(in_names),
                               num_processes=num_processes,
                               mem_available=mem_available,
                               mem_frac=mem_frac,
                               process_size=process_size)
-        wwk = WorkerWithKwargs(self.file_process, **kwargs)
+        wwk = WorkerWithKwargs(self.file_process, outdir=outdir,
+                               create_outdir=create_outdir,
+                               outname_append=outname_append,         
+                               **kwargs)
         if ncp == 1:
             retvals = [wwk.worker(i) for i in in_names]
             return retvals
@@ -541,16 +747,20 @@ class BigMultiPipe():
             return (None, meta)
         # Make data and meta available for convenience for subclasses.
         outname = self.outname_create(in_name, data=data, meta=meta, **kwargs)
-        outname = self.file_write(data, outname, **kwargs)
+        outname = self.file_write(data, outname, meta=meta,
+                                  in_name=in_name, **kwargs)
         return (outname, meta)
 
     def file_read(self, in_name, **kwargs):
-        """Reads data file from disk.  Intended to be overridden by subclass
+        """Reads data file(s) from disk.  Intended to be overridden by subclass
 
         Parameters
         ----------
-        in_name : str
-            Name of file to read
+        in_name : str or list
+            If `str`, name of file to read.  If `list`, each element
+            in list is processed recursively so that multiple files
+            can be considered a single "data" in `bigmultipipe`
+            nomenclature
 
         kwargs : see Notes in :class:`BigMultiPipe` Parameter section
 
@@ -560,11 +770,14 @@ class BigMultiPipe():
             Data to be processed
 
         """
-        
         kwargs = self.kwargs_merge(**kwargs)
-        with open(in_name, 'rb') as f:
-            data = f.read()
-        return data
+        if isinstance(in_name, str):
+            with open(in_name, 'rb') as f:
+                data = f.read()
+            return data
+        # Allow list (of lists...) to be read into a "data"
+        return [self.file_read(name, **kwargs)
+                for name in in_name]
 
     def file_write(self, data, outname, **kwargs):
         """Write data to disk file.  Intended to be overridden by subclass
@@ -732,104 +945,114 @@ class BigMultiPipe():
                        outdir=None,
                        create_outdir=None,
                        outname_append=None,
+                       outname=None,
+                       meta=None,
                        **kwargs):
-        """Create output filename
+        """Create output filename (including path)
 
         Parameters
         ----------
         in_name : str
-            Name of input raw data file
+            Name of input raw data file.  The basename of this file is
+            used together with contents of other parameters to
+            construct the output filename.  Overwritten by `outname.` 
 
-        All other parameters : see Parameters to :class:`BigMultiPipe`
+        outdir : str, None, optional
+            Name of directory into which output files will be written.  If
+            `None`, current directory in which the Python process is
+            running will be used.  Overwritten by ``outdir`` key in
+            `meta`, ignored if `outname` is specified and contains a
+            full path.
+            Default is ``None``
+
+        create_outdir : bool, optional
+            If ``True``, create outdir and any needed parent directories.
+            Does not raise an error if outdir already exists.
+            Overwritten by ``create_outdir`` key in `meta`. 
+            Default is ``False``
+
+        outname_append : str, optional
+            String to append to outname to avoid risk of input file
+            overwrite.  Example input file ``test.dat`` would become
+            output file ``test_bmp.dat``.  Overwritten by
+            ``outname_append key`` in `meta`.  Ignored if `outname` is
+            specified.
+            Default is ``_bmp``
+
+        outname : str
+            Output filename.  It would be unusual to specify this at
+            instantiation of a :class:`BigMultiPipe` object, since all
+            files would be written to only this one filename.  Rather,
+            this is intended to be generated by a pre-processing step
+            or overwritten by the ``outname`` key in `meta`.
+            Default is ``None``
+
+        meta : dict
+            Metadata generated by `bigmultipipe` pipeline.  Keys from
+            `meta` are used to overwrite the keywords of this method,
+            as noted above.
+            Default is ``None``
 
         Returns
         -------
         outname : str
-            Name of output file to be written
+            output filename to be written, including path
+
+        Raises
+        ------
+        ValueError if not enough information is specified to construct
+        outname or the directory into which the file is to be written does
+        not exist (see `create_outdir` to prevent the later error)
+
+        Notes
+        -----
+        meta['outname'] is how outnames need to be specified when
+        `in_name` contains multiple files
 
         """
         kwargs = self.kwargs_merge(**kwargs)
-        if outdir is None:
-            outdir = self.outdir
-        if create_outdir is None:
-            create_outdir = self.create_outdir
-        if outname_append is None:
-            outname_append = self.outname_append
-        
-        if not (isinstance(in_name, str)
-                and isinstance(outname_append, str)):
-            raise ValueError("Not enough information provided to create output filename.  Specify outname or use an input filename and specify a string to append to that output filename to assure input is not overwritten")
-        if outdir is None:
-            outdir = os.getcwd()
+        if meta is not None:
+            outdir = meta.get('outdir') or outdir 
+            create_outdir = meta.get('create_outdir') or create_outdir 
+            outname_append = meta.get('outname_append') or outname_append 
+            outname = meta.get('outname') or outname
+
+        return outname or outname_creator(in_name,
+                                          outdir=outdir,
+                                          create_outdir=create_outdir,
+                                          outname_append=outname_append)
+
+        if outname is not None:
+            outdir = os.path.dirname(outname) or outdir
+        outdir = outdir or os.getcwd()
         if create_outdir:
             os.makedirs(outdir, exist_ok=True)
-        if not os.path.isdir(outdir):
-            raise ValueError(f"outdir {outdir} does not exist.  Create directory or use create_outdir=True")
-        bname = os.path.basename(in_name)
-        prepend, ext = os.path.splitext(bname)
-        outbname = prepend + outname_append + ext
+        # I think it is more pythonic to just let this fail on write,
+        # since the user may not care if the directory is written
+        #if not os.path.isdir(outdir):
+        #    raise ValueError(f"outdir {outdir} does not exist.  Create directory or use create_outdir=True")
+
+        if outname is None:
+            bname = os.path.basename(in_name)
+            prepend, ext = os.path.splitext(bname)
+            outbname = prepend + outname_append + ext
+        else:
+            outbname = os.path.basename(outname)
         outname = os.path.join(outdir, outbname)
         return outname
 
-def no_outfile(data, **kwargs):
-    """`bigmultipipe` post-processing routine that stops pipeline processing and returns accumulated metadata without writing any output files.  Put last in `BigMultiPipe.post_process_list``
-    """
-    return None
+def outname_creator(in_name,
+                    outdir=None,
+                    create_outdir=False,
+                    outname_append=''):
+    """Create output filename (including path) from in_name"""
+    
+    outdir = outdir or os.getcwd()
+    if create_outdir:
+        os.makedirs(outdir, exist_ok=True)
+    bname = os.path.basename(in_name)
+    prepend, ext = os.path.splitext(bname)
+    outbname = prepend + outname_append + ext
+    outname = os.path.join(outdir, outbname)
+    return outname
 
-def prune_pout(pout, in_names):
-    """Removes entries marked for deletion in a BigMultiPipe.pipeline() output
-
-    To mark an entry for deletion, ``outfname`` must be `None` *and*
-    ``meta`` must be `{}`
-
-    Parameters
-    ----------
-    pout : list of tuples (str or ``None``, dict)
-        Output of a :meth:`BigMultiPipe.pipeline()
-        <bigmultipipe.BigMultiPipe.pipeline>` run.  The `str` are
-        pipeline output filenames, the `dict` is the output metadata.
-
-    in_names : list of str
-        Input file names to a :meth:`BigMultiPipe.pipeline()
-        <bigmultipipe.BigMultiPipe.pipeline>` run.  There will
-        be one ``pout`` for each ``in_name``
-
-    Returns
-    -------
-    (pruned_pout, pruned_in_names) : list of tuples (str, dict)
-        Pruned output with the ``None`` output filenames removed in both
-        the ``pout`` and ``in_name`` lists.
-
-    """
-    pruned_pout = []
-    pruned_in_names = []
-    for i in range(len(pout)):
-        if pout[i][0] is None and pout[i][1] == {}:
-            # outfname AND meta are empty
-            continue
-        pruned_pout.append(pout[i])
-        pruned_in_names.append(in_names[i])
-    return (pruned_pout, pruned_in_names)
-
-
-def multi_logging(level, meta, message):
-    """Implements logging on a per-process basis in :class:`~bigmultipipe.BigMultiPipe` pipeline post-processing routines
-
-    Parameters
-    ----------
-    level : str
-        Log message level (e.g., "debug", "info", "warn, "error")
-
-    meta : dict
-        The meta channel of a :class:`~bigmultipipe.BigMultiPipe` pipeline
-
-    message : str
-        Log message
-
-    """
-    # Work directly with the meta dictionary, thus a return value
-    # is not needed
-    if level in meta:
-        meta[level].append(message)
-    else:
-        meta[level] = [message]

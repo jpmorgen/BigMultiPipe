@@ -59,12 +59,14 @@ times the large output data files are re-read during subsequent
 processing.  As discussed in the `Background`_ section, the amount of
 information returned as metadata should be modest in size.  The
 :func:`bigmultipipe.bmp_cleanup()` function can be used to remove
-large items from the metadata that may have been used to relay
-intermediate results between post-processing steps.  Alternately,
-large metadata items not intended for return to the calling process
-can be stored in an object passed via the control stream (i.e. as a
-keyword of `~bigmultipipe.BigMultiPipe` or
-:meth:`BigMultiPipe.pipeline() <bigmultipipe.BigMultiPipe.pipeline>`).
+large items from the metadata, if necessary.  As discussed in the
+notes of that function, the ability to store and remove large metadata
+items in each process metadata stream can be used to assist in
+building modular pipeline processing systems.  Alternately, large
+metadata items not intended for return to the calling process can be
+stored in an object passed via the control stream (i.e. as a keyword
+of `~bigmultipipe.BigMultiPipe` or :meth:`BigMultiPipe.pipeline()
+<bigmultipipe.BigMultiPipe.pipeline>`).
 
 .. _background:
 
