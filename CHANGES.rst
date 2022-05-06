@@ -1,6 +1,11 @@
 0.2.0
 =====
 
+Make outname a callable external function
+
+Add ArgparseHandler and BMPArgparseMixin, which enables an
+object-oriented approach to constructing adding argparse options
+
 Add cached_pout, which enables pipeline metadata to be written to and
 re-read from a pickle file
 

@@ -94,8 +94,8 @@ class BMPArgparseMixin:
             help = (f'number of subprocesses for parallelization; '
                     f'0=all cores, <1 = fraction of total cores; '
                     f'(default={default})')
-        self.parser.add_argument('--' + option, type=float, default=default,
-                            help=help, **kwargs)
+        self.parser.add_argument('--' + option, type=float,
+                                 default=default, help=help, **kwargs)
         
     def add_mem_available(self, 
                           default=None,
@@ -104,8 +104,8 @@ class BMPArgparseMixin:
         option = 'mem_available'
         if help is None:
             help = 'hard-coded available memory'
-        self.parser.add_argument('--' + option, type=float, default=default,
-                            help=help, **kwargs)
+        self.parser.add_argument('--' + option, type=float,
+                                 default=default, help=help, **kwargs)
 
     def add_mem_frac(self, 
                      default=0.8,
@@ -115,8 +115,8 @@ class BMPArgparseMixin:
         if help is None:
             help = ('maximum fraction of memory to be used; '
                     f'(default={default})')
-        self.parser.add_argument('--' + option, type=float, default=default,
-                                 help=help, **kwargs)
+        self.parser.add_argument('--' + option, type=float,
+                                 default=default, help=help, **kwargs)
 
     def add_process_size(self, 
                          default=0.8,
@@ -125,8 +125,8 @@ class BMPArgparseMixin:
         option = 'process_size'
         if help is None:
             help = 'process size in bytes'
-        self.parser.add_argument('--' + option, type=float, default=default,
-                            help=help, **kwargs)
+        self.parser.add_argument('--' + option, type=float,
+                                 default=default, help=help, **kwargs)
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
