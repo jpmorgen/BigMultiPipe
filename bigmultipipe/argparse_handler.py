@@ -15,9 +15,15 @@ class ArgparseHandler:
 class BMPArgparseMixin:
     """Adds basic `argparse` options relevant to `~bigmultipipe.BigMultiPipe`.  See `bigmultipipe.argparsehandler`"""
 
+    # Consider putting option in as argument to functions so they can
+    # be tweaked & reused.  E.g.
+    # add_read_pout(option='read_calibration_pout',
+    #               help='read calibration pipeline output pickel file')
+
     outname_append = OUTNAME_APPEND
 
-    def add_outdir(self, 
+    def add_outdir(self,
+                   option = 'outdir',
                    default='.',
                    help='Directory to which files will be written',
                    **kwargs):
@@ -25,6 +31,10 @@ class BMPArgparseMixin:
 
         Parameters
         ----------
+        option : str
+            `argparse` option.
+            Default is `outdir`
+
         default : str
             Default outdir
             Default is `.`
@@ -33,15 +43,14 @@ class BMPArgparseMixin:
             Description
             Default is 'Directory to which files will be written'
         """
-        option = 'outdir'
         self.parser.add_argument('--' + option,
                             default=default, help=help, **kwargs)
         
-    def add_create_outdir(self, 
+    def add_create_outdir(self,
+                          option='create_outdir',
                           default=False,
                           help=None,
                           **kwargs):
-        option = 'create_outdir'
         if help is None:
             help = (f'Create outdir')
         self.parser.add_argument('--' + option,
@@ -49,47 +58,47 @@ class BMPArgparseMixin:
                                  default=default,
                                  help=help, **kwargs)
 
-    def add_read_pout(self, 
+    def add_read_pout(self,
+                      option='read_pout',
                       default=False,
                       help=None,
                       **kwargs):
-        option = 'read_pout'
         if help is None:
-            help = (f'Read pout pickle file')
+            help = (f'Read pipeline output pickle file')
         self.parser.add_argument('--' + option,
                                  action=argparse.BooleanOptionalAction,
                                  default=default,
                                  help=help, **kwargs)
 
-    def add_write_pout(self, 
-                      default=False,
-                      help=None,
-                      **kwargs):
-        option = 'write_pout'
+    def add_write_pout(self,
+                       option = 'write_pout',
+                       default=False,
+                       help=None,
+                       **kwargs):
         if help is None:
-            help = (f'Write pout pickle file')
+            help = (f'Write pipeline output pickle file')
         self.parser.add_argument('--' + option,
                                  action=argparse.BooleanOptionalAction,
                                  default=default,
                                  help=help, **kwargs)
 
-    def add_outname_append(self, 
+    def add_outname_append(self,
+                           option='outname_append',
                            default=None,
                            help=None,
                            **kwargs):
         default = default or self.outname_append
-        option = 'outname_append'
         if help is None:
             help = (f'string to append to output files to prevent '
                     f'overwrite (default: {default})')
         self.parser.add_argument('--' + option, default=default,
                                  help=help, **kwargs)
 
-    def add_num_processes(self, 
+    def add_num_processes(self,
+                          option='num_processes',
                           default=0.8,
                           help=None,
                           **kwargs):
-        option = 'num_processes'
         if help is None:
             help = (f'number of subprocesses for parallelization; '
                     f'0=all cores, <1 = fraction of total cores; '
@@ -97,32 +106,32 @@ class BMPArgparseMixin:
         self.parser.add_argument('--' + option, type=float,
                                  default=default, help=help, **kwargs)
         
-    def add_mem_available(self, 
+    def add_mem_available(self,
+                          option='mem_available',                          
                           default=None,
                           help=None,
                           **kwargs):
-        option = 'mem_available'
         if help is None:
             help = 'hard-coded available memory'
         self.parser.add_argument('--' + option, type=float,
                                  default=default, help=help, **kwargs)
 
-    def add_mem_frac(self, 
+    def add_mem_frac(self,
+                     option='mem_frac',
                      default=0.8,
                      help=None,
                      **kwargs):
-        option = 'mem_frac'
         if help is None:
             help = ('maximum fraction of memory to be used; '
                     f'(default={default})')
         self.parser.add_argument('--' + option, type=float,
                                  default=default, help=help, **kwargs)
 
-    def add_process_size(self, 
+    def add_process_size(self,
+                         option='process_size',
                          default=0.8,
                          help=None,
                          **kwargs):
-        option = 'process_size'
         if help is None:
             help = 'process size in bytes'
         self.parser.add_argument('--' + option, type=float,
