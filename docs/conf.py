@@ -25,7 +25,7 @@ except ImportError:
 # -- Project information -----------------------------------------------------
 
 project = 'bigmultipipe'
-copyright = '2021, Jeffrey P. Morgenthaler'
+copyright = '2022, Jeffrey P. Morgenthaler'
 author = 'Jeffrey P. Morgenthaler'
 
 # The short X.Y version

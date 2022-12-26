@@ -788,7 +788,7 @@ class BigMultiPipe():
         subclass to actually write the data, in which case, this would
         be an example first line of the subclass.file_write method:
 
-        BigMultiPipe(self).file_write(data, outname, **kwargs)
+        BigMultiPipe(self).file_write(data, outname, \*\*kwargs)
 
 
         Parameters

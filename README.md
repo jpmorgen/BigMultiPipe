@@ -2,8 +2,8 @@ This repository supports development of the BigMultiPipe project.
 
 The primary product of the project is currently the bigmultipipe
 Python module, which provides tools that enable a flexible, modular
-approach to constructing data processing pipelines that optimize
-computer processing, memory, and disk I/O resources.
+approach to constructing parallelized data processing pipelines which
+optimize computer processing, memory, and disk I/O resources.
 
 As described in the package documentation at
 https://bigmultipipe.readthedocs.io/en/latest/ the BigMultiPipe
